@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:17.5-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: simplerc
+      POSTGRES_USER: simplerc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+  redis:
+    image: redis:8.0.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    volumes: ["redis-data:/data"]
+  coturn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    network_mode: host
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    volumes: ["./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro", "./certs:/etc/coturn/certs:ro"]
+volumes:
+  postgres-data:
+  redis-data:

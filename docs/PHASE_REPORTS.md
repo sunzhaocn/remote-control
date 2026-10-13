@@ -44,3 +44,12 @@
 - 未完成项：尚未固定上游 WebRTC SHA；补丁文件目前是逐文件变更规范而非可直接 `git apply` 的最终行级 diff；没有补丁 AAR 或真实 AAR SHA-256。内部音频运行时明确不可用。
 - 新增决策：Manifest 不提前声明音频权限；标准 AAR 使用不可用实现；只有远端确认后进入停传确认态。
 - 已知风险：最终 ADM 补丁、恢复发送和 RTP 统计必须在获授权的 Linux 构建及双机环境验证。
+
+## 阶段 6：弱网、TURN、生命周期与清理
+
+- 完成内容：120 秒有限恢复状态机、信令/ICE/媒体/授权/用户停止分类、指数退避抖动、控制门禁、候选路径分类、自建 Coturn/PostgreSQL/Redis Compose 模板、TLS/TURN 带宽文档、后台限制设置入口。
+- 修改范围：`recovery/`、`webrtc/IcePath.kt`、`deploy/`、MainActivity/UI、部署与恢复文档。
+- 构建状态：未构建；本机无 JDK/SDK/Go/Docker。未运行 `docker compose config`，未启动任何服务。
+- 未完成项：恢复状态机尚未接入真实 PeerConnection；getStats 选中候选关联解析未完成；通知质量/路径动态更新和锁屏接收处理未接通。
+- 新增决策：用户停止和 projection 停止直接终止；恢复前同步状态；LAN 必须额外确认，host candidate 本身不足以判断。
+- 已知风险：Compose 模板尚未经 Docker 解析；Coturn 镜像/端口和目标部署网络需运维审查。

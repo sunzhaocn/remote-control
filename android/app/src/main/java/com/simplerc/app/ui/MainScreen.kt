@@ -55,6 +55,7 @@ fun SimpleRcApp(
     openAccessibilitySettings: () -> Unit,
     openAppDetails: () -> Unit,
     requestNotificationPermission: () -> Unit,
+    openBatterySettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showPermissionGuide by remember { mutableStateOf(false) }
@@ -89,6 +90,7 @@ fun SimpleRcApp(
                                 },
                                 onStop = viewModel::stopStandby,
                                 requestNotificationPermission = requestNotificationPermission,
+                                openBatterySettings = openBatterySettings,
                             )
                         }
                     }
@@ -208,6 +210,7 @@ private fun ControlledPanel(
     onStart: () -> Unit,
     onStop: () -> Unit,
     requestNotificationPermission: () -> Unit,
+    openBatterySettings: () -> Unit,
 ) {
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -247,6 +250,8 @@ private fun ControlledPanel(
                     color = Brand,
                 )
             }
+            TextButton(onClick = openBatterySettings, modifier = Modifier.fillMaxWidth()) { Text("后台运行设置说明") }
+            Text("部分厂商需手动允许后台运行、自启动或锁定最近任务；系统仍可能停止服务。", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
