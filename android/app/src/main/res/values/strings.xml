@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SimpleRC</string>
+    <string name="accessibility_service_label">SimpleRC 远程操作</string>
+    <string name="accessibility_service_description">仅在你启用被控并确认会话后，用于执行远程点击、滑动和系统导航操作。SimpleRC 不记录、保存或传输界面文字。</string>
+    <string name="standby_channel_name">被控待机</string>
+    <string name="standby_channel_description">显示 SimpleRC 被控待机服务的运行状态</string>
+    <string name="standby_notification_title">被控待机服务运行中</string>
+    <string name="standby_notification_text">信令将在阶段 2 接入；可随时停止</string>
+    <string name="stop_standby">停止被控</string>
+</resources>
+

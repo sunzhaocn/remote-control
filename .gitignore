@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+secrets.properties
+android/app/libs/*.aar
+!android/app/libs/README.md
+
