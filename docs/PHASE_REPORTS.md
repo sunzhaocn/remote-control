@@ -17,3 +17,12 @@
 - 未完成项：HTTP 设备注册、固定 ID 更新、随机凭据注册和 WebSocket 会话路由尚未接入 `main`，因此本阶段为部分实现，不能用于真实配对。
 - 新增决策：P-256 ECDSA 设备身份；AES-256-GCM 本地加密；Argon2id 64 MiB/3 次/2 lanes；凭据代次用于撤销恢复令牌。
 - 已知风险：缺少编译验证；PAKE 未采用，在线验证仍会向认证服务暴露验证码，需要 TLS、限流和统一失败时序保护。
+
+## 阶段 3：屏幕采集、WebRTC、DataChannel 与基础触控
+
+- 完成内容：`mediaProjection` 前台服务和一次性授权持有；WebRTC 工厂、硬件编解码工厂；控制命令会话/序号/时效/几何版本/坐标校验；无障碍点击、长按式点击、滑动与三项全局操作。
+- 修改范围：Manifest、`capture`、`webrtc`、`control`、无障碍服务、协议文档。
+- 构建状态：未构建，JDK/Android SDK 不可用。
+- 未完成项：MediaProjection Activity 授权入口、ScreenCapturerAndroid 到 PeerConnection 的完整接线、SDP/ICE 业务路由和远端渲染 UI 尚未接通，因此视频会话不能实际建立。
+- 新增决策：可靠控制与短寿命滑动分通道；消息不是成功回执；授权 Intent 单次消费。
+- 已知风险：标准 AAR API 尚未经编译核对；服务当前只持有 projection，VirtualDisplay 由后续 capturer 接线负责。
