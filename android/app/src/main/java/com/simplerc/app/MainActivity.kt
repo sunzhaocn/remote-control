@@ -2,6 +2,7 @@ package com.simplerc.app
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -33,6 +34,7 @@ class MainActivity : ComponentActivity() {
             val notificationPermission = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission(),
             ) { viewModel.refreshPermissions() }
+            val projectionManager = getSystemService(MediaProjectionManager::class.java)
             val screenCapture = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 val data = result.data
                 if (result.resultCode == Activity.RESULT_OK && data != null) {
@@ -40,9 +42,13 @@ class MainActivity : ComponentActivity() {
                     ContextCompat.startForegroundService(context, Intent(context, ScreenShareService::class.java).apply {
                         putExtra(ScreenShareService.EXTRA_RESULT_CODE, result.resultCode)
                         putExtra(ScreenShareService.EXTRA_DATA, data)
+                        putExtra(ScreenShareService.EXTRA_AUDIO_ENABLED, viewModel.state.value.audioSharingAllowed && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
                     })
                     SessionMedia.instance(application).startControlledCapture(result.resultCode, data)
                 } else viewModel.confirmIncoming(false)
+            }
+            val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+                screenCapture.launch(projectionManager.createScreenCaptureIntent())
             }
 
             LaunchedEffect(Unit) {
@@ -76,7 +82,12 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 openBatterySettings = { startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)) },
-                requestScreenCapture = { screenCapture.launch(getSystemService(MediaProjectionManager::class.java).createScreenCaptureIntent()) },
+                requestScreenCapture = {
+                    if (viewModel.state.value.audioSharingAllowed &&
+                        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+                    ) audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    else screenCapture.launch(projectionManager.createScreenCaptureIntent())
+                },
             )
         }
     }

@@ -1,30 +1,117 @@
-Subject: [PATCH] Android ADM: allow a caller supplied AudioRecord factory
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/audio/JavaAudioDeviceModule.java b/stream-webrtc-android/src/main/java/org/webrtc/audio/JavaAudioDeviceModule.java
+index 5e455aa..aa0498c 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/audio/JavaAudioDeviceModule.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/audio/JavaAudioDeviceModule.java
+@@ -14,6 +14,7 @@ import android.content.Context;
+ import android.media.AudioAttributes;
+ import android.media.AudioDeviceInfo;
+ import android.media.AudioManager;
++import android.media.AudioRecord;
+ import android.os.Build;
+ import androidx.annotation.RequiresApi;
+ import java.util.concurrent.ScheduledExecutorService;
+@@ -31,6 +32,10 @@ public class JavaAudioDeviceModule implements AudioDeviceModule {
+     return new Builder(context);
+   }
 
-This patch is intentionally tied to UPSTREAM_REVISION before application. It adds
-an AudioRecordFactory interface to JavaAudioDeviceModule.Builder and passes it to
-WebRtcAudioRecord. WebRtcAudioRecord calls the factory instead of setAudioSource;
-SimpleRC's factory constructs AudioRecord with setAudioPlaybackCaptureConfig.
++  public interface AudioRecordFactory {
++    AudioRecord create(int sampleRate, int channelConfig, int audioFormat, int bufferSizeInBytes);
++  }
++
+   public static class Builder {
+     private final Context context;
+     private ScheduledExecutorService scheduler;
+@@ -38,6 +43,8 @@ public class JavaAudioDeviceModule implements AudioDeviceModule {
+     private int inputSampleRate;
+     private int outputSampleRate;
+     private int audioSource = WebRtcAudioRecord.DEFAULT_AUDIO_SOURCE;
++    private boolean audioSourceExplicitlySet;
++    private AudioRecordFactory audioRecordFactory;
+     private int audioFormat = WebRtcAudioRecord.DEFAULT_AUDIO_FORMAT;
+     private AudioTrackErrorCallback audioTrackErrorCallback;
+     private AudioRecordErrorCallback audioRecordErrorCallback;
+@@ -102,7 +109,22 @@ public class JavaAudioDeviceModule implements AudioDeviceModule {
+      * android.media.MediaRecorder.AudioSource. The default is AudioSource.VOICE_COMMUNICATION.
+      */
+     public Builder setAudioSource(int audioSource) {
++      if (audioRecordFactory != null) {
++        throw new IllegalStateException("AudioRecordFactory and audioSource are mutually exclusive");
++      }
+       this.audioSource = audioSource;
++      this.audioSourceExplicitlySet = true;
++      return this;
++    }
++
++    /** Uses a caller supplied AudioRecord, for example AudioPlaybackCapture. */
++    public Builder setAudioRecordFactory(AudioRecordFactory factory) {
++      if (audioSourceExplicitlySet) {
++        throw new IllegalStateException("AudioRecordFactory and audioSource are mutually exclusive");
++      }
++      this.audioRecordFactory = factory;
++      this.useHardwareAcousticEchoCanceler = false;
++      this.useHardwareNoiseSuppressor = false;
+       return this;
+     }
 
-Required source changes at the fixed revision:
+@@ -266,7 +288,8 @@ public class JavaAudioDeviceModule implements AudioDeviceModule {
+       }
+       final WebRtcAudioRecord audioInput = new WebRtcAudioRecord(context, executor, audioManager,
+         audioSource, audioFormat, audioRecordErrorCallback, audioRecordStateCallback,
+-        samplesReadyCallback, useHardwareAcousticEchoCanceler, useHardwareNoiseSuppressor);
++        samplesReadyCallback, useHardwareAcousticEchoCanceler, useHardwareNoiseSuppressor,
++        audioRecordFactory);
+       final WebRtcAudioTrack audioOutput =
+         new WebRtcAudioTrack(context, audioManager, audioAttributes, audioTrackErrorCallback,
+           audioTrackStateCallback, useLowLatency, enableVolumeLogger);
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/audio/WebRtcAudioRecord.java b/stream-webrtc-android/src/main/java/org/webrtc/audio/WebRtcAudioRecord.java
+index 0086529..c85bfd8 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/audio/WebRtcAudioRecord.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/audio/WebRtcAudioRecord.java
+@@ -106,6 +106,7 @@ class WebRtcAudioRecord {
+   private final @Nullable AudioRecordStateCallback stateCallback;
+   private final @Nullable SamplesReadyCallback audioSamplesReadyCallback;
+   private final boolean isAcousticEchoCancelerSupported;
++  private final JavaAudioDeviceModule.AudioRecordFactory audioRecordFactory;
+   private final boolean isNoiseSuppressorSupported;
 
-1. sdk/android/api/org/webrtc/audio/JavaAudioDeviceModule.java
-   - public interface AudioRecordFactory { AudioRecord create(int sampleRate,
-     int channelMask, int audioFormat, int bufferSize); }
-   - Builder.setAudioRecordFactory(@Nullable AudioRecordFactory factory)
-   - pass factory into WebRtcAudioRecord constructor
-   - reject simultaneous setAudioSource and custom factory use
+   /**
+@@ -197,7 +198,7 @@ class WebRtcAudioRecord {
+     this(context, newDefaultScheduler() /* scheduler */, audioManager, DEFAULT_AUDIO_SOURCE,
+       DEFAULT_AUDIO_FORMAT, null /* errorCallback */, null /* stateCallback */,
+       null /* audioSamplesReadyCallback */, WebRtcAudioEffects.isAcousticEchoCancelerSupported(),
+-      WebRtcAudioEffects.isNoiseSuppressorSupported());
++      WebRtcAudioEffects.isNoiseSuppressorSupported(), null /* audioRecordFactory */);
+   }
 
-2. sdk/android/src/java/org/webrtc/audio/WebRtcAudioRecord.java
-   - store the nullable factory
-   - in createAudioRecordOnMOrHigher, call factory.create(...) when non-null
-   - require returned AudioRecord STATE_INITIALIZED
-   - do not enable microphone AEC/NS for custom factory input
+   public WebRtcAudioRecord(Context context, ScheduledExecutorService scheduler,
+@@ -205,7 +206,8 @@ class WebRtcAudioRecord {
+                            @Nullable AudioRecordErrorCallback errorCallback,
+                            @Nullable AudioRecordStateCallback stateCallback,
+                            @Nullable SamplesReadyCallback audioSamplesReadyCallback,
+-                           boolean isAcousticEchoCancelerSupported, boolean isNoiseSuppressorSupported) {
++                           boolean isAcousticEchoCancelerSupported, boolean isNoiseSuppressorSupported,
++                           @Nullable JavaAudioDeviceModule.AudioRecordFactory audioRecordFactory) {
+     if (isAcousticEchoCancelerSupported && !WebRtcAudioEffects.isAcousticEchoCancelerSupported()) {
+       throw new IllegalArgumentException("HW AEC not supported");
+     }
+@@ -222,6 +224,7 @@ class WebRtcAudioRecord {
+     this.audioSamplesReadyCallback = audioSamplesReadyCallback;
+     this.isAcousticEchoCancelerSupported = isAcousticEchoCancelerSupported;
+     this.isNoiseSuppressorSupported = isNoiseSuppressorSupported;
++    this.audioRecordFactory = audioRecordFactory;
+     Logging.d(TAG, "ctor" + WebRtcAudioUtils.getThreadInfo());
+   }
 
-3. SimpleRC patch adapter (compiled only in patched-AAR variant)
-   - build AudioPlaybackCaptureConfiguration from current MediaProjection
-   - match USAGE_MEDIA, USAGE_GAME and USAGE_UNKNOWN
-   - create AudioRecord.Builder with PCM_16BIT and the negotiated format
-   - call setAudioPlaybackCaptureConfig; never set MIC/VOICE_COMMUNICATION source
-
-No binary patch has been generated. Exact line hunks must be produced after the
-upstream revision is fixed, then reviewed with git apply --check before building.
+@@ -314,8 +317,10 @@ class WebRtcAudioRecord {
+       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+         // Use the AudioRecord.Builder class on Android M (23) and above.
+         // Throws IllegalArgumentException.
+-        audioRecord = createAudioRecordOnMOrHigher(
+-          audioSource, sampleRate, channelConfig, audioFormat, bufferSizeInBytes);
++        audioRecord = audioRecordFactory != null
++          ? audioRecordFactory.create(sampleRate, channelConfig, audioFormat, bufferSizeInBytes)
++          : createAudioRecordOnMOrHigher(
++            audioSource, sampleRate, channelConfig, audioFormat, bufferSizeInBytes);
+         audioSourceMatchesRecordingSessionRef.set(null);
+         if (preferredDevice != null) {
+           setPreferredDevice(preferredDevice);

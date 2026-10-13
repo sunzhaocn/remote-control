@@ -11,5 +11,6 @@ local.properties
 secrets.properties
 android/app/libs/*.aar
 !android/app/libs/README.md
+!android/app/libs/stream-webrtc-android-simplerc-1.3.10.aar
 server/dist/
 

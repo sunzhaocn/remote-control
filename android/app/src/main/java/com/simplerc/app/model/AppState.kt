@@ -36,7 +36,8 @@ data class AppState(
     val remoteRotation: Int? = null,
     val remoteCaptureWidth: Int = 0,
     val remoteCaptureHeight: Int = 0,
-    val audioStatus: String = "内部音频不可用（未接入补丁构建）",
+    val audioStatus: String = "等待音频状态",
+    val audioMuted: Boolean = false,
     val errorMessage: String? = null,
 )
 

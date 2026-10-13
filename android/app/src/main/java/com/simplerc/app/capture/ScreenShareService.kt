@@ -20,12 +20,17 @@ class ScreenShareService : Service() {
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Int.MIN_VALUE) ?: Int.MIN_VALUE
         if (data == null || resultCode == Int.MIN_VALUE || consumed) { stopSelf(); return START_NOT_STICKY }
         val stopIntent = PendingIntent.getService(this, 1002, Intent(this, ScreenShareService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val audioEnabled = intent?.getBooleanExtra(EXTRA_AUDIO_ENABLED, false) == true
+        val foregroundTypes = if (Build.VERSION.SDK_INT >= 29) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                (if (audioEnabled) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+        } else 0
         ServiceCompat.startForeground(this, 1002, NotificationCompat.Builder(this, NotificationChannels.STANDBY_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_simplerc).setContentTitle("正在共享屏幕").setContentText("可立即停止共享").setOngoing(true).addAction(0, "停止", stopIntent).build(),
-            if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)
+            foregroundTypes)
         consumed = true
         return START_NOT_STICKY
     }
     private fun stopProjection() { com.simplerc.app.session.SessionMedia.instance(application).close(); (application as? com.simplerc.app.SimpleRcApplication)?.sessions?.disconnect(); ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); stopSelf() }
-    companion object { const val ACTION_STOP="com.simplerc.STOP_SHARE"; const val EXTRA_RESULT_CODE="resultCode"; const val EXTRA_DATA="resultData" }
+    companion object { const val ACTION_STOP="com.simplerc.STOP_SHARE"; const val EXTRA_RESULT_CODE="resultCode"; const val EXTRA_DATA="resultData"; const val EXTRA_AUDIO_ENABLED="audioEnabled" }
 }

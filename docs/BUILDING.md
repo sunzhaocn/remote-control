@@ -43,3 +43,7 @@ AGP 8.10 官方兼容信息要求 Gradle 8.11.1、JDK 17，并支持最高 API 3
 阶段 1–4 从 Maven Central 使用标准预编译 AAR。用户已授权 WebRTC 源码构建，但 WSL2 安装后系统要求重启，当前尚不能初始化 Ubuntu；因此本轮没有补丁 AAR。重启后按 `webrtc-patch/BUILD_LINUX.md` 继续。
 
 未来的补丁 AAR 不使用付费制品服务。计划保存可复现补丁和构建说明，并在本地 `android/app/libs/` 放置 AAR（该二进制默认被 `.gitignore` 排除）或使用明确免费的发布附件，同时记录 SHA-256。
+
+## 2026-10-13 音频补丁构建结果
+
+补丁 AAR 已在 WSL2 Ubuntu 24.04 上构建，实际首次耗时 7 分 49 秒；源码 258 MiB、Gradle 缓存 2.9 GiB、SDK 754 MiB。Android 应用改用仓库内免费保存的本地 AAR，版本 0.3.0，APK SHA-256 为 `1a5e329683c72bda7fcc47340fe004df586e2c2649aea039ba00a5edb8d237de`。Windows 本机 Gradle 在重启后遇到 Java 回环连接阻断，本次应用构建改由 WSL2 完成并成功；这只代表构建验证。

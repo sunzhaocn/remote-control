@@ -20,3 +20,6 @@
 - 2026-10-13：完成端到端信令、视频、DataChannel 控制、坐标、确认/租约/重连和短期 TURN 凭据接线；Android 0.2.0、Go 和 Compose 配置构建校验成功。
 - 2026-10-13：服务器已部署 HTTPS/WSS 后端、PostgreSQL、Redis、Coturn、APK 下载与证书续期；按用户指示删除废弃 lightremote 项目。
 - 2026-10-13：内部音频仍因补丁 AAR 不存在而不可用。WSL2 已安装并启用 Windows 功能，但需重启后才能安装 Ubuntu 和执行 WebRTC 源码构建。
+- 2026-10-13：用户授权后完成 WSL2 Ubuntu 初始化、固定上游补丁、真实 AAR 构建与 Android 内部音频接入。
+- WebRTC AAR `assembleRelease` 成功（7 分 49 秒，SHA-256 见 `webrtc-patch/SHA256SUMS`）；Android 0.3.0 `:app:assembleDebug` 成功。
+- 内部音频、权限分离和独立静音停传已编译，等待用户双机验收；未运行测试、模拟器或 ADB。

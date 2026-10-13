@@ -31,3 +31,9 @@
 
 - 状态：已解决构建与公网部署。
 - 结果：Go/Compose 校验成功；HTTPS/WSS、数据库、Redis、Coturn、APK 下载和证书续期均已部署。功能仍待双机验证。
+
+## GAP-003 WebRTC 音频补丁未形成可应用构建（已解决）
+
+- 状态：已解决并编译，待双机验证。
+- 结果：固定上游提交的行级补丁已通过应用检查，四 ABI AAR 已构建并以 SHA-256 锁定；Android 0.3.0 已使用该 AAR 编译。
+- 剩余验证：不同设备的 AudioPlaybackCapture、音画同步、静音后 outbound-rtp 停止增长及恢复发送需要用户人工双机验收。

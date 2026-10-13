@@ -149,3 +149,18 @@
 | 17.0 阶段0核查 | 已实现 | FEASIBILITY |
 | 17.1–17.7 阶段交付 | 部分实现 | 报告和提交齐全；阶段2–6多项仅部分实现 |
 | 附录全部默认值 | 部分实现 | AppConfig涵盖主要超时；服务限流/回收配置未完整集中 |
+
+## 2026-10-13 阶段 5 状态修订（本节优先于上方早期快照）
+
+| 条款 | 状态 | 实现/证据 |
+| --- | --- | --- |
+| 2.2 Wrapper/JDK/SDK/Git | 已实现 | Windows JDK/SDK及 WSL2 JDK/SDK 均已安装；本轮使用 WSL2 构建 |
+| 2.5–2.6 原生 WebRTC/AudioPlaybackCapture | 已实现 | 本地补丁 AAR、`WebRtcEngine.kt`、`SessionMedia.kt` |
+| 3.5 控制端声音开关 | 已实现 | `MainScreen.kt`、`SessionMedia.setRemoteAudioEnabled` |
+| 7.4 音视频权限分离 | 已实现 | `MainActivity.kt`；拒绝 RECORD_AUDIO 后继续申请屏幕捕获 |
+| 7.5 FGS 类型与顺序 | 已实现 | Manifest 与 `ScreenShareService.kt` 动态类型 |
+| 7.6 授权 Intent 单用 | 已实现 | 视频 capturer 创建投影，音频读取同一实例 |
+| 7.14 RECORD_AUDIO 仅作播放捕获 | 已实现 | `WebRtcEngine.kt` 只构造 AudioPlaybackCapture，未创建麦克风源 |
+| 14.1–14.13 内部音频/独立静音 | 已实现 | 补丁 AAR、发送/接收轨道、sender 脱轨、释放、ACK 状态；待双机验证 |
+| 16.4 APK | 已实现 | 0.3.0 debug APK 已编译并记录校验值 |
+| 17.5 阶段 5 | 已实现 | 真实补丁、AAR、许可证/校验值和接入均完成；待双机验证 |

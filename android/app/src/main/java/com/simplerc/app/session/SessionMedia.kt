@@ -2,6 +2,7 @@ package com.simplerc.app.session
 
 import android.app.Application
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjection
 import android.util.DisplayMetrics
 import android.view.WindowManager
@@ -19,6 +20,7 @@ import org.json.JSONObject
 import org.webrtc.*
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
+import androidx.core.content.ContextCompat
 
 class SessionMedia private constructor(private val app: Application) : AutoCloseable {
     private val engine = WebRtcEngine(app)
@@ -30,6 +32,10 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private var textureHelper: SurfaceTextureHelper? = null
     private var videoSource: VideoSource? = null
     private var videoTrack: VideoTrack? = null
+    private var audioSource: AudioSource? = null
+    private var audioTrack: AudioTrack? = null
+    private var audioSender: RtpSender? = null
+    private var remoteAudioTrack: AudioTrack? = null
     private var remoteTrack: VideoTrack? = null
     private var renderer: SurfaceViewRenderer? = null
     private var sessionId: String? = null
@@ -60,8 +66,14 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         capturer.initialize(helper, app, source.capturerObserver)
         val metrics = app.resources.displayMetrics
         capturer.startCapture(captureWidth(metrics), captureHeight(metrics), 30)
+        engine.setMediaProjection(capturer.mediaProjection)
         val track = engine.factory.createVideoTrack("screen", source)
         peer?.addTrack(track, listOf("simplerc"))
+        if (AppStateStore.state.value.audioSharingAllowed &&
+            ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        ) startInternalAudio() else AppStateStore.update {
+            it.copy(audioStatus = if (it.audioSharingAllowed) "内部音频未获授权，视频与控制继续可用" else "被控端未允许共享内部音频")
+        }
         videoCapturer = capturer; textureHelper = helper; videoSource = source; videoTrack = track
         geometry = currentGeometry(geometry.version + 1)
         sendGeometry()
@@ -79,6 +91,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
                 geometry = RemoteGeometry(payload.getLong("version"), RectPx(payload.optDouble("left").toFloat(), payload.optDouble("top").toFloat(), payload.getDouble("width").toFloat(), payload.getDouble("height").toFloat()), payload.getInt("screenWidth"), payload.getInt("screenHeight"), payload.getInt("rotation"))
                 AppStateStore.update { it.copy(controlEnabled = true, remoteRotation = geometry.rotationDegrees, remoteCaptureWidth = geometry.capture.width.toInt(), remoteCaptureHeight = geometry.capture.height.toInt()) }
             }
+            "AUDIO_STATE" -> handleAudioSignal(payload)
         }
     }
 
@@ -118,7 +131,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         peer = engine.createPeer(config, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) { sessionId?.let { signalSend?.invoke("ICE", it, JSONObject().put("sdpMid",candidate.sdpMid).put("sdpMLineIndex",candidate.sdpMLineIndex).put("candidate",candidate.sdp)) } }
             override fun onDataChannel(channel: DataChannel) { controlChannel = channel; observeControl(channel) }
-            override fun onTrack(transceiver: RtpTransceiver) { val track=transceiver.receiver.track(); if(track is VideoTrack){remoteTrack=track;renderer?.let(track::addSink);AppStateStore.update{it.copy(remoteVideoAvailable=true,sessionState=SessionState.CONNECTED,statusDetail="已连接",controlEnabled=geometry.version>0)}} }
+            override fun onTrack(transceiver: RtpTransceiver) { when(val track=transceiver.receiver.track()){is VideoTrack->{remoteTrack=track;renderer?.let(track::addSink);AppStateStore.update{it.copy(remoteVideoAvailable=true,sessionState=SessionState.CONNECTED,statusDetail="已连接",controlEnabled=geometry.version>0)}};is AudioTrack->{remoteAudioTrack=track;track.setEnabled(true);peer?.setAudioPlayout(true);AppStateStore.update{it.copy(audioStatus="内部音频已开启",audioMuted=false)}}} }
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) { when(state){PeerConnection.IceConnectionState.CONNECTED,PeerConnection.IceConnectionState.COMPLETED->AppStateStore.update{it.copy(sessionState=SessionState.CONNECTED,statusDetail="已连接")};PeerConnection.IceConnectionState.DISCONNECTED->AppStateStore.update{it.copy(sessionState=SessionState.RECONNECTING,statusDetail="正在重连",controlEnabled=false)};PeerConnection.IceConnectionState.FAILED->{peer?.restartIce();createRestartOffer()};else->Unit} }
             override fun onSignalingChange(p0: PeerConnection.SignalingState?)=Unit
             override fun onIceConnectionReceivingChange(p0:Boolean)=Unit
@@ -140,6 +153,43 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     }
 
     private fun createControlChannel() { val init=DataChannel.Init().apply{ordered=true}; controlChannel=peer?.createDataChannel("control",init)?.also(::observeControl) }
+    private fun startInternalAudio(): Boolean {
+        if (audioTrack != null) return true
+        return runCatching {
+            val source = engine.factory.createAudioSource(MediaConstraints())
+            val track = engine.factory.createAudioTrack("internal-audio", source)
+            val sender = audioSender
+            if (sender == null) audioSender = peer?.addTrack(track, listOf("simplerc"))
+            else check(sender.setTrack(track, false)) { "无法恢复内部音频发送轨道" }
+            audioSource = source; audioTrack = track
+            AppStateStore.update { it.copy(audioStatus="内部音频正在发送", audioMuted=false) }
+            true
+        }.getOrElse { AppStateStore.update { state -> state.copy(audioStatus="内部音频启动失败：${it.message}") }; false }
+    }
+    private fun stopInternalAudio(): Boolean = runCatching {
+        val sender = audioSender
+        if (sender != null) check(sender.setTrack(null, false)) { "无法停止内部音频发送轨道" }
+        audioTrack?.dispose(); audioSource?.dispose(); audioTrack=null; audioSource=null
+        AppStateStore.update { it.copy(audioStatus="内部音频已停止发送",audioMuted=true) }
+        true
+    }.getOrDefault(false)
+    fun setRemoteAudioEnabled(enabled:Boolean):Boolean {
+        if(AppStateStore.state.value.role!=DeviceRole.CONTROLLER)return false
+        peer?.setAudioPlayout(enabled); remoteAudioTrack?.setEnabled(enabled)
+        AppStateStore.update{it.copy(audioMuted=!enabled,audioStatus=if(enabled)"等待被控端恢复内部音频" else "本地已静音，等待被控端停止发送")}
+        val id=sessionId?:return false
+        return signalSend?.invoke("AUDIO_STATE",id,JSONObject().put("command",if(enabled)"START" else "STOP"))==true
+    }
+    private fun handleAudioSignal(payload:JSONObject){
+        when(payload.optString("command")){
+            "STOP"->if(AppStateStore.state.value.role==DeviceRole.CONTROLLED){val ok=stopInternalAudio();sendAudioAck("STOPPED",ok)}
+            "START"->if(AppStateStore.state.value.role==DeviceRole.CONTROLLED){val allowed=AppStateStore.state.value.audioSharingAllowed;val ok=allowed&&startInternalAudio();sendAudioAck(if(ok)"STARTED" else "DISALLOWED",ok)}
+            "STOPPED"->if(AppStateStore.state.value.role==DeviceRole.CONTROLLER)AppStateStore.update{it.copy(audioStatus="内部音频已停止发送",audioMuted=true)}
+            "STARTED"->if(AppStateStore.state.value.role==DeviceRole.CONTROLLER){peer?.setAudioPlayout(true);remoteAudioTrack?.setEnabled(true);AppStateStore.update{it.copy(audioStatus="内部音频已开启",audioMuted=false)}}
+            "DISALLOWED"->AppStateStore.update{it.copy(audioStatus="被控端未允许共享内部音频",audioMuted=true)}
+        }
+    }
+    private fun sendAudioAck(command:String,ok:Boolean){sessionId?.let{signalSend?.invoke("AUDIO_STATE",it,JSONObject().put("command",command).put("ok",ok))}}
     private fun observeControl(channel: DataChannel) { channel.registerObserver(object:DataChannel.Observer{override fun onBufferedAmountChange(p0:Long)=Unit;override fun onStateChange()=Unit;override fun onMessage(buffer:DataChannel.Buffer){val bytes=ByteArray(buffer.data.remaining());buffer.data.get(bytes);handleControl(JSONObject(String(bytes)))}}) }
     private fun handleControl(value:JSONObject){if(AppStateStore.state.value.role!=DeviceRole.CONTROLLED)return;val id=sessionId?:return;if(value.optString("sessionId")!=id)return;val seq=value.optLong("sequence");if(seq<=lastControlSequence||System.currentTimeMillis()-value.optLong("createdAtMs") !in 0..2000||value.optLong("geometryVersion")!=geometry.version)return;lastControlSequence=seq;val kind=value.optString("kind");val points=value.optJSONArray("points")?:JSONArray();fun point(index:Int):Pair<Float,Float>?{val p=points.optJSONObject(index)?:return null;val mapped=mapper.normalizedToRemote(NormalizedCoordinate(p.optDouble("x").toFloat(),p.optDouble("y").toFloat()),geometry)?:return null;return mapped.x to mapped.y};val service=RemoteControlAccessibilityService.instance?:return;when(kind){"TAP"->point(0)?.let{service.performTap(it.first,it.second)};"LONG_PRESS"->point(0)?.let{service.performTap(it.first,it.second,600)};"SWIPE"->{val path=(0 until points.length()).mapNotNull(::point);if(path.size==points.length()&&path.size>=2)service.performSwipe(path,600)};"BACK"->service.performNavigation(com.simplerc.app.control.ControlKind.BACK);"HOME"->service.performNavigation(com.simplerc.app.control.ControlKind.HOME);"RECENTS"->service.performNavigation(com.simplerc.app.control.ControlKind.RECENTS)}}
     private fun createOffer(){peer?.createOffer(sdpObserver{description->peer?.setLocalDescription(sdpObserver{},description);sessionId?.let{signalSend?.invoke("OFFER",it,JSONObject().put("sdp",description.description))}},MediaConstraints())}
@@ -153,6 +203,6 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private fun captureWidth(m:DisplayMetrics)=if(m.widthPixels>=m.heightPixels)1280 else 720
     private fun captureHeight(m:DisplayMetrics)=if(m.widthPixels>=m.heightPixels)720 else 1280
     private fun stopSession(reason:String){AppStateStore.update{it.copy(sessionState=SessionState.ERROR,statusDetail=reason,controlEnabled=false)};close()}
-    override fun close(){runCatching{videoCapturer?.stopCapture()};videoCapturer?.dispose();videoTrack?.dispose();videoSource?.dispose();textureHelper?.dispose();controlChannel?.close();controlChannel?.dispose();peer?.close();peer?.dispose();videoCapturer=null;peer=null;controlChannel=null;remoteTrack=null}
+    override fun close(){stopInternalAudio();runCatching{videoCapturer?.stopCapture()};engine.setMediaProjection(null);videoCapturer?.dispose();videoTrack?.dispose();videoSource?.dispose();textureHelper?.dispose();controlChannel?.close();controlChannel?.dispose();peer?.close();peer?.dispose();videoCapturer=null;peer=null;controlChannel=null;remoteTrack=null;remoteAudioTrack=null;audioSender=null}
     companion object { @Volatile private var shared:SessionMedia?=null;fun instance(app:Application)=shared?:synchronized(this){shared?:SessionMedia(app).also{shared=it}} }
 }

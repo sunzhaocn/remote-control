@@ -187,3 +187,9 @@ Redis 使用 `SET NX PX` 原子占用，以目标 ID 为键、随机会话 ID �
 ### D-033 WebRTC 构建环境阻塞
 
 用户已授权源码构建。本机已安装 WSL 并启用所需 Windows 功能，但系统要求重启后才能初始化 Ubuntu。音频保持未实现，Manifest 不声明音频权限。
+
+## D-030 可复现补丁 AAR 与内部音频接入（2026-10-13）
+
+固定 `GetStream/webrtc-android` 1.3.10 提交 `5d388e533d87f857e7de4a729630200cf9766369`。其发布仓库包含 Java 源码与四 ABI 原生库，采用最小 `AudioRecordFactory` 补丁即可在约 4 GiB 实际工作集内构建，无需 Chromium 全量源码。AAR 直接纳入 Git 普通对象，不用 Git LFS 或付费托管。
+
+音频捕获复用 `ScreenCapturerAndroid.getMediaProjection()` 返回的同一投影实例，避免重复消费授权 Intent。`RECORD_AUDIO` 拒绝时只关闭音频；视频和控制继续。音频启用时共享服务动态包含 `microphone` FGS 类型；未启用时只声明运行中的 `mediaProjection` 类型。静音先在控制端停播放，再由被控端脱离 sender 轨道并释放采集，最后回 ACK。

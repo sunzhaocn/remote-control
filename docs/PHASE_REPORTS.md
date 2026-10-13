@@ -80,3 +80,12 @@
 - 未完成项：AudioPlaybackCapture 补丁 AAR、真实停传音频、H.264 优先/动态质量、完整统计、媒体停滞检测、DataChannel 执行回执、Android 14 单应用范围拒绝。
 - 新增决策：TURN 使用 3480 UDP/TCP 和 5350 TLS；连接路径从选中候选对事件生成；废弃 lightremote 项目按用户指示删除，证书续期迁入 SimpleRC。
 - 已知风险：全部 Android 行为均未双机验证；WebRTC 音频构建仍受重启后 WSL2 初始化阻塞。
+
+## 2026-10-13 阶段 5 补丁构建与音频接入补充报告
+
+- 完成内容：固定 GetStream WebRTC Android 1.3.10 的提交，生成并应用最小 AudioRecordFactory 行级补丁，在 WSL2 Ubuntu 24.04 构建四 ABI AAR；Android 接入 AudioPlaybackCapture、动态 microphone/mediaProjection 前台服务类型、独立权限、音频轨道、可靠 AUDIO_STATE 命令与 ACK、发送端脱轨并释放采集的真实静音流程。
+- 修改范围：`webrtc-patch/`、本地 AAR、Android Gradle/Manifest、`WebRtcEngine`、`SessionMedia`、`MainActivity`、`ScreenShareService`、控制端声音按钮及交付文档。
+- 构建状态：WebRTC AAR `assembleRelease` 成功（7 分 49 秒）；Android 0.3.0 `:app:assembleDebug` 成功。未运行测试，未接触手机。
+- 未完成项：真实设备的捕获兼容性、音画同步和静音 outbound-rtp 统计需双机验收；平台禁止捕获的音源不会被绕过。
+- 新增决策：AAR 直接保存于仓库且不用 LFS/付费制品服务；复用 ScreenCapturerAndroid 创建的同一 MediaProjection；音频拒绝不阻断视频；只有实际启用音频时才以 microphone FGS 类型启动共享服务。
+- 已知风险：不同厂商对 AudioPlaybackCapture 和后台 FGS 的实现可能不同；恢复轨道无需重新协商的行为仍需双机验证。

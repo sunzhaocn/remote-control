@@ -21,3 +21,11 @@
 | 状态通知 | `service/StandbyService.kt`、`NotificationChannels.kt` | 停止入口、START_NOT_STICKY、通知文案不含秘密 |
 
 建议审查顺序：工具链和 Manifest → 状态/权限 → `api/server.go` 安全边界 → `SessionCoordinator` → `SessionMedia` → 几何 → 音频缺口 → 重连/TURN → 对照表与未完成项。
+
+## 内部音频与独立静音
+
+- 补丁入口：`webrtc-patch/patches/0001-audioplaybackcapture-factory.patch`；固定提交与校验值：`webrtc-patch/UPSTREAM_REVISION`、`webrtc-patch/SHA256SUMS`。
+- AudioPlaybackCapture 构造与 ADM：`android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt`。
+- 同一 MediaProjection、音频 sender、静音脱轨/释放、恢复与 AUDIO_STATE ACK：`android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt`。
+- 权限与前台服务类型：`MainActivity.kt`、`capture/ScreenShareService.kt`、`AndroidManifest.xml`。
+- 审查重点：音频权限拒绝不阻断视频；工厂不能回退到麦克风；STOP 必须先 `setTrack(null,false)` 并释放轨道，再回复 STOPPED；控制端先停本地播放再等待 ACK。

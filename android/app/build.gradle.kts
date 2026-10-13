@@ -12,8 +12,8 @@ android {
         applicationId = "com.simplerc.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
     }
 
     buildTypes {
@@ -57,8 +57,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // 阶段 1–4 使用标准预编译 AAR；阶段 5 的内部音频补丁不得成为前四阶段前置条件。
-    implementation(libs.stream.webrtc)
+    implementation(files("libs/stream-webrtc-android-simplerc-1.3.10.aar"))
     implementation(libs.okhttp)
 
     debugImplementation(libs.androidx.compose.ui.tooling)

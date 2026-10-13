@@ -325,6 +325,9 @@ private fun RemotePanel(state: AppState, viewModel: MainViewModel) {
         Column(modifier = Modifier.align(Alignment.TopStart).padding(8.dp).background(Color(0x99000000), RoundedCornerShape(8.dp)).padding(8.dp)) {
             Text(state.statusDetail, color = Color.White)
             Text("路径：${state.connectionPath}  声音：${state.audioStatus}", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            TextButton(onClick = { media.setRemoteAudioEnabled(state.audioMuted) }) {
+                Text(if (state.audioMuted) "开启声音" else "静音", color = Color.White)
+            }
             TextButton(onClick = viewModel::disconnect) { Text("断开", color = Color.White) }
         }
     }

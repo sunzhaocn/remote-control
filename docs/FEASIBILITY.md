@@ -174,3 +174,7 @@ Android 14+ 默认让用户选择整屏或单应用。单应用共享会排除�
 3. AAR 存放不得产生费用。
 
 阶段 5 前计划给出的 Linux 基线：Ubuntu 22.04/24.04 x86_64 原生环境或 Windows 上的 WSL2 Ubuntu，使用 Chromium `depot_tools`、`fetch --nohooks webrtc_android`/固定源码修订、`gclient sync`、对应 Android SDK/NDK 与 Ninja/GN 构建。WebRTC 全量源码、依赖、构建目录和缓存预计需要约 40–80 GB 可用磁盘；首次拉取和构建通常约 1–4 小时，具体取决于网络、CPU、内存和修订版，低配置或网络较慢时可能更久。进入阶段 5 前会基于固定修订版重新核对命令和资源估算，不在阶段 1–4 下载源码或执行构建。
+
+## 已构建补丁（2026-10-13）
+
+实际采用的 GetStream 1.3.10 包含 Java 源码和预编译四 ABI 原生库，因此无需 Chromium 全量构建。补丁只增加由调用者提供 `AudioRecord` 的入口；应用提供的实现固定使用 `AudioPlaybackCaptureConfiguration`，不使用麦克风源。AAR 构建和应用构建均成功，实际资源数据见 `webrtc-patch/BUILD_LINUX.md`。后台共享时，Android 官方对正在使用 `RECORD_AUDIO` 的捕获要求 microphone 类型前台服务；实现只在用户允许且权限已授予时动态启动该类型。被否决的“混入麦克风缓冲”仍不采用，因为它扩大隐私权限、无法保证纯内部音频、会引入回声/环境声且违背不得以变通冒充内部音频的约束。
