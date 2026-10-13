@@ -1,4 +1,19 @@
 services:
+  server:
+    build:
+      context: ../server
+    restart: unless-stopped
+    environment:
+      LISTEN_ADDR: ":8080"
+      DATABASE_URL: postgres://simplerc:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/simplerc?sslmode=disable
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
+      CREDENTIAL_PEPPER: ${CREDENTIAL_PEPPER:?set CREDENTIAL_PEPPER}
+    ports: ["127.0.0.1:18080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
   postgres:
     image: postgres:17.5-alpine
     restart: unless-stopped
@@ -7,14 +22,27 @@ services:
       POSTGRES_USER: simplerc
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U simplerc -d simplerc"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
   redis:
     image: redis:8.0.2-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
     volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
   coturn:
     image: coturn/coturn:4.6.3
     restart: unless-stopped
+    profiles: ["turn"]
     network_mode: host
     command: ["-c", "/etc/coturn/turnserver.conf"]
     volumes: ["./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro", "./certs:/etc/coturn/certs:ro"]

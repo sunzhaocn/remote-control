@@ -62,3 +62,12 @@
 - 未完成项：阶段 2–6 对照表列出的端到端接线和服务端路由；WebRTC 音频补丁构建；所有实机验证。
 - 新增决策：最终交付以审计真实性为先，缺失链路保持“部分实现/未实现”，不生成空 APK 路径或虚构构建结果。
 - 已知风险：Kotlin/Go/Gradle/Compose 均未经编译器验证；依赖可解析性、Docker 模板和运行时 API 可能仍有错误。
+
+## 阶段 7 后续构建与部署修复
+
+- 完成内容：安装 JDK 17、Android SDK、Go 与 Docker；修复 MediaProjection 可空返回的 Kotlin 编译错误；补齐 Go 依赖校验；增加后端容器；服务器部署数据库、Redis 和健康检查服务。
+- 修改范围：`android/gradle.properties`、`ScreenShareService.kt`、`server/go.mod`、`server/go.sum`、`server/Dockerfile`、`deploy/docker-compose.yml` 和状态/构建/部署文档。
+- 构建状态：Android `:app:assembleDebug` 成功；Go `build`/`vet` 成功；Compose 配置解析成功；服务器健康检查成功。未运行测试、未接触手机。
+- 未完成项：端到端远控链路、后端业务路由、WebRTC 音频补丁、域名/TLS、公网 WSS 和 TURN。
+- 新增决策：中文路径显式允许；服务器只部署回环健康基础；服务器无法访问 Go 模块代理时使用本机交叉编译的静态二进制。
+- 已知风险：APK 虽已编译但核心会话仍未接线；服务器部署不能供客户端真实配对；所有设备行为仍待人工双机验收。

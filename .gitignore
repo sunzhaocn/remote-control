@@ -10,4 +10,5 @@ local.properties
 secrets.properties
 android/app/libs/*.aar
 !android/app/libs/README.md
+server/dist/
 

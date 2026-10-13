@@ -25,7 +25,7 @@ class ScreenShareService : Service() {
             .setSmallIcon(R.drawable.ic_simplerc).setContentTitle("正在共享屏幕").setContentText("可在应用内立即停止").setOngoing(true).build(),
             if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)
         consumed = true
-        projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(resultCode, data).also {
+        projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(resultCode, data)?.also {
             it.registerCallback(object : MediaProjection.Callback() { override fun onStop() { stopProjection() } }, null)
         }
         return START_NOT_STICKY

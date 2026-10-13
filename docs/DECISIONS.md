@@ -161,3 +161,17 @@ Redis 使用 `SET NX PX` 原子占用，以目标 ID 为键、随机会话 ID �
 ### D-027 未构建交付标记
 
 由于 JDK、Android SDK、Go 和 Docker 均不可用，任何源码模块都不得标“已编译”。没有 APK、服务二进制或经过解析的 Compose 配置。最终审查以需求对照表和明确缺口为准。
+
+## 构建与部署修复
+
+### D-028 中文路径构建
+
+保留仓库现有中文路径，并启用 `android.overridePathCheck=true`。Windows 桌面运行环境的 Java 临时目录需显式设为短的本地路径，以避免 NIO 本地套接字初始化失败；这只影响构建环境。
+
+### D-029 服务器部署边界
+
+服务器没有可用于 SimpleRC 的域名和 TLS 证书，因此只部署 PostgreSQL、Redis 和后端健康检查基础，后端绑定 `127.0.0.1:18080`。不公开 HTTP 配对服务，也不启用 Coturn；取得域名、证书并补齐业务路由后才能配置 HTTPS/WSS 与 TURN/TLS。
+
+### D-030 后端容器制品
+
+服务器访问 Go 模块代理超时，部署时在已完成 `go build`/`go vet` 的本机交叉编译静态 Linux amd64 二进制，再由 `scratch` 镜像封装。二进制目录不纳入 Git；源码依赖由 `go.mod` 和 `go.sum` 固定。

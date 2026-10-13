@@ -8,13 +8,13 @@
 - 影响：未经修改的候选 AAR 无法实现需求中的内部音频轨道，不能将其标记为已实现。
 - 处理决定：阶段 1–4 使用标准预编译 AAR；阶段 5 固定上游修订版并维护最小 ADM 补丁。WebRTC 构建须取得用户单独授权，AAR 免费存放。
 
-## ENV-001 当前环境缺少 Android 构建工具
+## ENV-001 当前环境缺少 Android 构建工具（已解决）
 
-- 状态：阻塞构建验证
+- 状态：已解决
 - 发现阶段：阶段 1
 - 已确认事实：当前 Windows 环境找不到 `java`、`JAVA_HOME`、Android SDK、Android Studio 或全局 Gradle。
 - 影响：`gradlew.bat :app:assembleDebug` 在 Wrapper 启动前终止，尚未产生 APK，也无法确认源码编译结果。
-- 处理方式：安装 JDK 17、Android SDK Platform 36 和兼容 Build Tools，或提供现有安装路径后重新执行明确的 `:app:assembleDebug`。不需要连接手机。
+- 处理结果：已安装 JDK 17、Android SDK Platform 36 和兼容 Build Tools，`:app:assembleDebug` 成功并生成 debug APK。未连接手机。
 
 ## GAP-002 端到端远控链路未完成
 
@@ -28,8 +28,8 @@
 - 影响：内部音频运行时不可用。
 - 事实：补丁目录目前包含变更规范，不是绑定具体上游 SHA 的最终行级 diff；没有 AAR 和 SHA-256。
 
-## GAP-004 后端与部署配置未验证
+## GAP-004 后端与部署配置未验证（已解决构建部分）
 
-- 状态：未构建/未校验
-- 影响：Go 代码可能有编译问题，Compose/Coturn 模板可能需修正。
-- 原因：本机没有 Go 或 Docker；未启动任何服务。
+- 状态：Go 与 Compose 已校验，基础容器已部署；公网服务仍未完成
+- 结果：`go build ./...`、`go vet ./...`、`docker compose config` 成功；服务器端 PostgreSQL、Redis、server 健康。
+- 剩余：设备注册/配对/WebSocket 路由未完成；没有域名和 TLS，Coturn 未启用。

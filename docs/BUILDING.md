@@ -30,9 +30,13 @@ AGP 8.10 官方兼容信息要求 Gradle 8.11.1、JDK 17，并支持最高 API 3
 
 该命令是构建验证，不代表功能测试。工程没有自定义测试、设备安装、ADB 或模拟器钩子。
 
-## 阶段 1 当前环境结果
+## 当前环境结果
 
-2026-10-12 在当前 Windows 环境中未找到 JDK、Android SDK 或 Android Studio。执行 `:app:assembleDebug` 在 Wrapper 启动前因找不到 Java 终止，没有生成 APK。
+2026-10-12 已安装 JDK 17、Android SDK Platform 36 和 Build Tools，并成功执行 `:app:assembleDebug`。产物为 `android/app/build/outputs/apk/debug/app-debug.apk`，版本 `0.1.0`、debug 变体。该结果只代表构建验证。
+
+当前桌面运行环境需把 `TEMP`、`TMP`、`java.io.tmpdir` 和 `jdk.net.unixdomain.tmpdir` 指向短的 Windows 本地路径（本次使用 `C:\Temp\codex-java`），否则 Java NIO 可能无法建立 Gradle 所需的本地套接字。项目中文路径通过 `android.overridePathCheck=true` 显式允许。
+
+后端已用 Go 1.27 执行 `go build ./...`、`go vet ./...`，并交叉编译 Linux amd64 静态二进制用于服务器容器。
 
 ## WebRTC 音频补丁边界
 
