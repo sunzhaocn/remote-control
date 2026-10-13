@@ -1,0 +1,30 @@
+Subject: [PATCH] Android ADM: allow a caller supplied AudioRecord factory
+
+This patch is intentionally tied to UPSTREAM_REVISION before application. It adds
+an AudioRecordFactory interface to JavaAudioDeviceModule.Builder and passes it to
+WebRtcAudioRecord. WebRtcAudioRecord calls the factory instead of setAudioSource;
+SimpleRC's factory constructs AudioRecord with setAudioPlaybackCaptureConfig.
+
+Required source changes at the fixed revision:
+
+1. sdk/android/api/org/webrtc/audio/JavaAudioDeviceModule.java
+   - public interface AudioRecordFactory { AudioRecord create(int sampleRate,
+     int channelMask, int audioFormat, int bufferSize); }
+   - Builder.setAudioRecordFactory(@Nullable AudioRecordFactory factory)
+   - pass factory into WebRtcAudioRecord constructor
+   - reject simultaneous setAudioSource and custom factory use
+
+2. sdk/android/src/java/org/webrtc/audio/WebRtcAudioRecord.java
+   - store the nullable factory
+   - in createAudioRecordOnMOrHigher, call factory.create(...) when non-null
+   - require returned AudioRecord STATE_INITIALIZED
+   - do not enable microphone AEC/NS for custom factory input
+
+3. SimpleRC patch adapter (compiled only in patched-AAR variant)
+   - build AudioPlaybackCaptureConfiguration from current MediaProjection
+   - match USAGE_MEDIA, USAGE_GAME and USAGE_UNKNOWN
+   - create AudioRecord.Builder with PCM_16BIT and the negotiated format
+   - call setAudioPlaybackCaptureConfig; never set MIC/VOICE_COMMUNICATION source
+
+No binary patch has been generated. Exact line hunks must be produced after the
+upstream revision is fixed, then reviewed with git apply --check before building.
