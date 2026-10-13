@@ -31,6 +31,10 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
     private var credentialRefresh: Job? = null
     private var heartbeat: Job? = null
     private var reconnectJob: Job? = null
+    private var connectTimeout: Job? = null
+    private var rateLimitCountdown: Job? = null
+    private var registrationTimeout: Job? = null
+    private var pendingFixedSave: Pair<String,String>? = null
     @Volatile private var connected = false
 
     fun startControlled() {
@@ -39,7 +43,7 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
             val fixed = secrets.get("fixed_mode") == "1"
             val id = secrets.get("fixed_id")
             val code = secrets.get("fixed_code")
-            if (fixed && id != null && code != null) registerFixed(id, code) else registerRandomCredentials()
+            if (fixed && id != null && code != null) publishFixed(id, code, persistOnSuccess = false) else registerRandomCredentials()
         }
     }
 
@@ -49,6 +53,7 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
     }
 
     fun useRandomCredentials() {
+        credentialRefresh?.cancel()
         secrets.put("fixed_mode", "0")
         AppStateStore.update { it.copy(fixedCredentialMode = false, localId = "", localCode = "") }
         if (connected && AppStateStore.state.value.standbyServiceRunning) registerRandomCredentials()
@@ -67,13 +72,11 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
     fun registerFixed(id: String, code: String) {
         val normalized = CredentialRules.normalizeId(id)
         if (!CredentialRules.validId(normalized) || !CredentialRules.validCustomCode(code)) {
-            AppStateStore.update { it.copy(statusDetail = "自定义 ID 格式错误或验证码少于 12 位") }
+            AppStateStore.update { it.copy(statusDetail = CredentialRules.idValidationText(id) ?: CredentialRules.codeValidationText(code) ?: "自定义凭据格式错误") }
             return
         }
         val action = {
-            secrets.put("fixed_id", normalized); secrets.put("fixed_code", code); secrets.put("fixed_mode", "1")
-            send("REGISTER_FIXED", null, JSONObject().put("id", normalized).put("code", code))
-            AppStateStore.update { it.copy(localId = normalized, localCode = code, fixedCredentialMode = true, credentialExpiresAt = null, statusDetail = "正在保存自定义凭据") }
+            publishFixed(normalized, code, persistOnSuccess = true)
         }
         if (connected) action() else connectSignal(action)
     }
@@ -95,6 +98,7 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
     fun stop() {
         disconnect()
         credentialRefresh?.cancel()
+        connectTimeout?.cancel(); reconnectJob?.cancel(); rateLimitCountdown?.cancel(); registrationTimeout?.cancel()
         signal?.close()
         signal = null
     }
@@ -109,25 +113,53 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
             deviceId = id
             val timestamp = System.currentTimeMillis()
             val signature = identity.sign("ws\n$id\n$timestamp".toByteArray())
+            connected = false
             signal?.close()
             signal = SignalClient(this@SessionCoordinator).also { it.connect(AppConfig.SIGNALING_WS_URL, id, timestamp, signature) }
+            connectTimeout?.cancel()
+            connectTimeout = scope.launch {
+                delay(AppConfig.SIGNAL_CONNECT_TIMEOUT_SECONDS * 1000)
+                if (!connected) {
+                    signal?.close()
+                    AppStateStore.update { it.copy(sessionState=SessionState.ERROR,statusDetail="服务器连接超时",errorMessage="SERVER_UNREACHABLE") }
+                }
+            }
         }
     }
 
     private fun registerRandomCredentials() {
+        if (secrets.get("fixed_mode") == "1") return
         val bytes = ByteArray(5).also(SecureRandom()::nextBytes)
         val id = "r" + bytes.joinToString("") { "%02x".format(it) }
         val code = CredentialRules.randomCode()
         val expiresAt = System.currentTimeMillis() / 1000 + AppConfig.RANDOM_CREDENTIAL_REFRESH_SECONDS
         send("REGISTER_RANDOM", null, JSONObject().put("id", id).put("code", code).put("expiresAtEpochSeconds", expiresAt))
+        startRegistrationTimeout()
         secrets.put("active_code", code)
         AppStateStore.update { it.copy(localId = id, localCode = code, credentialExpiresAt = expiresAt, statusDetail = "正在发布配对凭据") }
         credentialRefresh?.cancel()
         credentialRefresh = scope.launch {
             delay(AppConfig.RANDOM_CREDENTIAL_REFRESH_SECONDS * 1000)
-            if (AppStateStore.state.value.sessionState == SessionState.STANDBY) registerRandomCredentials()
+            if (secrets.get("fixed_mode") != "1" && AppStateStore.state.value.sessionState == SessionState.STANDBY) registerRandomCredentials()
         }
     }
+
+    private fun publishFixed(id:String, code:String, persistOnSuccess:Boolean) {
+        credentialRefresh?.cancel()
+        if (persistOnSuccess) {
+            pendingFixedSave = id to code
+        }
+        send("REGISTER_FIXED", null, JSONObject().put("id", id).put("code", code))
+        startRegistrationTimeout()
+        AppStateStore.update { it.copy(localId=id,localCode=code,fixedCredentialMode=it.fixedCredentialMode||!persistOnSuccess,credentialExpiresAt=null,statusDetail=if(persistOnSuccess)"正在保存自定义凭据" else "正在发布自定义凭据") }
+    }
+
+    private fun publishCurrentCredentials() {
+        val fixed = secrets.get("fixed_mode") == "1"
+        val id = secrets.get("fixed_id"); val code = secrets.get("fixed_code")
+        if (fixed && id != null && code != null) publishFixed(id, code, false) else registerRandomCredentials()
+    }
+    private fun startRegistrationTimeout(){registrationTimeout?.cancel();registrationTimeout=scope.launch{delay(AppConfig.HANDSHAKE_TIMEOUT_SECONDS*1000);if(pendingFixedSave!=null){pendingFixedSave=null;loadSavedCredentials()};AppStateStore.update{it.copy(sessionState=SessionState.ERROR,statusDetail="凭据注册超时",errorMessage="REGISTRATION_TIMEOUT")}}}
 
     private fun send(type: String, sessionId: String?, payload: JSONObject): Boolean {
         val envelope = JSONObject().put("version", 1).put("type", type).put("sequence", sequence.incrementAndGet())
@@ -136,7 +168,7 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
         return signal?.send(envelope.toString()) == true
     }
 
-    override fun onOpen() { connected = true; pendingAction?.invoke(); pendingAction = null }
+    override fun onOpen() { connected = true; connectTimeout?.cancel(); reconnectJob?.cancel(); pendingAction?.invoke(); pendingAction = null }
 
     override fun onMessage(text: String) {
         runCatching {
@@ -145,7 +177,7 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
             val sessionId = envelope.optString("sessionId").takeIf(String::isNotBlank)
             val payload = envelope.optJSONObject("payload") ?: JSONObject()
             when (type) {
-                "REGISTERED" -> AppStateStore.update { it.copy(sessionState = SessionState.STANDBY, statusDetail = "被控待机中") }
+                "REGISTERED" -> { registrationTimeout?.cancel();pendingFixedSave?.let{(id,code)->secrets.put("fixed_id",id);secrets.put("fixed_code",code);secrets.put("fixed_mode","1")};val savedFixed=pendingFixedSave!=null||secrets.get("fixed_mode")=="1";pendingFixedSave=null; AppStateStore.update { it.copy(sessionState=SessionState.STANDBY,statusDetail="被控待机中",errorMessage=null,retryAfterSeconds=null,fixedCredentialMode=savedFixed) } }
                 "INCOMING" -> AppStateStore.update { it.copy(sessionState = SessionState.WAITING_CONFIRMATION, statusDetail = "收到控制请求，请在本机确认", incomingSessionId = sessionId) }
                 "CONFIRMED" -> {
                     AppStateStore.update { it.copy(sessionState = SessionState.CONNECTING, statusDetail = "正在建立媒体连接", activeSessionId = sessionId) }
@@ -155,7 +187,13 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
                 "OFFER", "ANSWER", "ICE", "GEOMETRY", "AUDIO_STATE" -> SessionMedia.instance(app).onSignal(type, sessionId, payload, ::sendRaw)
                 "REJECTED" -> AppStateStore.update { it.copy(sessionState = SessionState.IDLE, statusDetail = "连接被拒绝") }
                 "REVOKED" -> disconnect()
-                "ERROR" -> AppStateStore.update { it.copy(sessionState = SessionState.ERROR, statusDetail = errorText(payload.optString("code")), errorMessage = payload.optString("code")) }
+                "ERROR" -> {
+                    registrationTimeout?.cancel()
+                    val code=payload.optString("code")
+                    if(pendingFixedSave!=null){pendingFixedSave=null;loadSavedCredentials()}
+                    if(code=="RATE_LIMITED") startRateLimitCountdown(payload.optInt("retryAfterSeconds",60).coerceAtLeast(1))
+                    else AppStateStore.update { it.copy(sessionState=SessionState.ERROR,statusDetail=errorText(code),errorMessage=code,retryAfterSeconds=null) }
+                }
             }
         }.onFailure { AppStateStore.update { state -> state.copy(statusDetail = "收到无效信令") } }
     }
@@ -168,23 +206,30 @@ class SessionCoordinator(private val app: Application) : SignalClient.Listener {
         connected = false
         if (AppStateStore.state.value.sessionState in listOf(SessionState.IDLE, SessionState.STOPPED)) return
         if (reconnectJob?.isActive == true) return
-        AppStateStore.update { it.copy(sessionState = SessionState.RECONNECTING, statusDetail = "网络中断，正在重连", controlEnabled = false) }
+        val unavailable = !networkAvailable()
+        AppStateStore.update { it.copy(sessionState=SessionState.RECONNECTING,statusDetail=if(unavailable)"网络不可用，等待恢复" else "服务器不可达，正在重连",controlEnabled=false,errorMessage=if(unavailable)"NETWORK_UNAVAILABLE" else "SERVER_UNREACHABLE") }
         reconnectJob = scope.launch {
             val deadline = System.currentTimeMillis() + AppConfig.RECONNECT_GRACE_SECONDS * 1000
             var delayMs = 1_000L
             while (System.currentTimeMillis() < deadline) {
-                delay(delayMs + SecureRandom().nextInt(500))
+                delay(delayMs + SecureRandom().nextInt(AppConfig.RECONNECT_JITTER_MILLIS))
                 val active = AppStateStore.state.value.activeSessionId
                 connectSignal {
                     if (active != null) { send("LEASE_RENEW", active, JSONObject()); startHeartbeat(active) }
-                    else if (AppStateStore.state.value.standbyServiceRunning) registerRandomCredentials()
+                    else if (AppStateStore.state.value.standbyServiceRunning) publishCurrentCredentials()
                 }
                 delay(3_000)
                 if (connected) return@launch
-                delayMs = (delayMs * 2).coerceAtMost(15_000)
+                delayMs = (delayMs * 2).coerceAtMost(AppConfig.RECONNECT_MAX_DELAY_SECONDS * 1000)
             }
             AppStateStore.update { it.copy(sessionState = SessionState.ERROR, statusDetail = "重连超时：$reason", activeSessionId = null, controlEnabled = false) }
         }
     }
-    private fun errorText(code: String) = when (code) { "AUTH_FAILED" -> "此 ID 或验证码有误"; "RATE_LIMITED" -> "尝试过多，请稍后再试"; "LEASE_LOST" -> "会话租约已失效"; else -> "连接失败" }
+    private fun startRateLimitCountdown(seconds:Int){
+        reconnectJob?.cancel(); rateLimitCountdown?.cancel()
+        rateLimitCountdown=scope.launch { for(left in seconds downTo 1){AppStateStore.update{it.copy(sessionState=SessionState.ERROR,statusDetail="验证失败次数过多，${left} 秒后可重试",errorMessage="RATE_LIMITED",retryAfterSeconds=left)};delay(1000)};AppStateStore.update{it.copy(statusDetail="可以重试",retryAfterSeconds=0)} }
+    }
+    fun retryControlled(){ if(AppStateStore.state.value.standbyServiceRunning && AppStateStore.state.value.retryAfterSeconds.let{it==null||it==0}) startControlled() }
+    private fun networkAvailable():Boolean { val cm=app.getSystemService(android.net.ConnectivityManager::class.java);return cm.activeNetwork!=null }
+    private fun errorText(code: String) = when (code) { "AUTH_FAILED" -> "此 ID 或验证码有误"; "RATE_LIMITED" -> "验证失败次数过多"; "ID_UNAVAILABLE" -> "该 ID 已被使用，无法使用"; "LEASE_LOST" -> "会话租约已失效"; else -> "连接失败" }
 }

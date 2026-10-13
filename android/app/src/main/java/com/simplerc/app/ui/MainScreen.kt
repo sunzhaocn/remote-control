@@ -54,6 +54,7 @@ import com.simplerc.app.model.DeviceRole
 import com.simplerc.app.model.SessionState
 import com.simplerc.app.session.SessionMedia
 import com.simplerc.app.geometry.RectPx
+import com.simplerc.app.credentials.CredentialRules
 import org.webrtc.SurfaceViewRenderer
 
 private val Brand = Color(0xFF176B5B)
@@ -102,6 +103,7 @@ fun SimpleRcApp(
                                     if (!viewModel.startStandby()) showPermissionGuide = true
                                 },
                                 onStop = viewModel::stopStandby,
+                                onRetry = viewModel::retryControlled,
                                 requestNotificationPermission = requestNotificationPermission,
                                 openBatterySettings = openBatterySettings,
                             )
@@ -216,7 +218,7 @@ private fun ControllerPanel(state: AppState, viewModel: MainViewModel, compact: 
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(onClick = { viewModel.connect(targetId, code) }, enabled = state.sessionState !in listOf(SessionState.CONNECTING, SessionState.RECONNECTING), modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = { viewModel.connect(targetId, code) }, enabled = state.sessionState !in listOf(SessionState.CONNECTING, SessionState.RECONNECTING) && (state.retryAfterSeconds ?: 0) == 0, modifier = Modifier.fillMaxWidth()) {
                 Text(if (state.sessionState == SessionState.CONNECTING) "连接中" else "连接")
             }
             if (state.sessionState != SessionState.IDLE) OutlinedButton(onClick = viewModel::disconnect, modifier = Modifier.fillMaxWidth()) { Text("取消 / 断开") }
@@ -235,12 +237,16 @@ private fun ControlledPanel(
     onUseRandom: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onRetry: () -> Unit,
     requestNotificationPermission: () -> Unit,
     openBatterySettings: () -> Unit,
 ) {
     var fixedId by remember(state.fixedCredentialMode) { mutableStateOf(if (state.fixedCredentialMode) state.localId else "") }
     var fixedCode by remember(state.fixedCredentialMode) { mutableStateOf(if (state.fixedCredentialMode) state.localCode else "") }
     var showLocalCode by remember { mutableStateOf(false) }
+    var showFixedCode by remember { mutableStateOf(false) }
+    val idError = CredentialRules.idValidationText(fixedId)
+    val codeError = CredentialRules.codeValidationText(fixedCode)
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(if (compact) 12.dp else 18.dp),
@@ -250,11 +256,11 @@ private fun ControlledPanel(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!state.fixedCredentialMode) Button(onClick = onUseRandom, modifier = Modifier.weight(1f)) { Text("随机凭据") }
                 else OutlinedButton(onClick = onUseRandom, modifier = Modifier.weight(1f)) { Text("随机凭据") }
-                if (state.fixedCredentialMode) Button(onClick = { }, modifier = Modifier.weight(1f)) { Text("自定义") }
-                else OutlinedButton(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = fixedId.isNotBlank() && fixedCode.length >= 12, modifier = Modifier.weight(1f)) { Text("保存自定义") }
+                if (state.fixedCredentialMode) Button(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = idError == null && codeError == null, modifier = Modifier.weight(1f)) { Text("保存自定义") }
+                else OutlinedButton(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = idError == null && codeError == null, modifier = Modifier.weight(1f)) { Text("保存自定义") }
             }
-            OutlinedTextField(value = fixedId, onValueChange = { fixedId = it }, label = { Text("自定义 ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = fixedCode, onValueChange = { fixedCode = it }, label = { Text("自定义验证码（至少 12 位）") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value=fixedId,onValueChange={fixedId=it},label={Text("自定义 ID（6–16 位）")},singleLine=true,isError=fixedId.isNotEmpty()&&idError!=null,supportingText={Text(idError ?: "可使用字母、数字、-、_；保存时统一为小写")},modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(value=fixedCode,onValueChange={fixedCode=it},label={Text("自定义验证码（12–32 位）")},singleLine=true,isError=fixedCode.isNotEmpty()&&codeError!=null,supportingText={Text(codeError ?: "长度符合要求且不含空白")},visualTransformation=if(showFixedCode)VisualTransformation.None else PasswordVisualTransformation(),trailingIcon={TextButton(onClick={showFixedCode=!showFixedCode}){Text(if(showFixedCode)"隐藏" else "显示")}},modifier=Modifier.fillMaxWidth())
             InfoLine("本机 ID", state.localId.ifBlank { "启用后生成" })
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("验证码", color = Color(0xFF52645F), modifier = Modifier.width(86.dp))
@@ -289,6 +295,12 @@ private fun ControlledPanel(
                     style = MaterialTheme.typography.bodySmall,
                     color = Brand,
                 )
+                if(state.sessionState==SessionState.ERROR){
+                    Row(modifier=Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                        OutlinedButton(onClick=onRetry,enabled=state.retryAfterSeconds.let{it==null||it==0},modifier=Modifier.weight(1f)){Text(if((state.retryAfterSeconds?:0)>0)"等待 ${state.retryAfterSeconds}s" else "重试")}
+                        Button(onClick=onStop,modifier=Modifier.weight(1f)){Text("停止")}
+                    }
+                }
             }
             TextButton(onClick = openBatterySettings, modifier = Modifier.fillMaxWidth()) { Text("后台运行设置说明") }
             Text("部分厂商需手动允许后台运行、自启动或锁定最近任务；系统仍可能停止服务。", style = MaterialTheme.typography.labelSmall)

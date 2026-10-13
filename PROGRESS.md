@@ -23,3 +23,5 @@
 - 2026-10-13：用户授权后完成 WSL2 Ubuntu 初始化、固定上游补丁、真实 AAR 构建与 Android 内部音频接入。
 - WebRTC AAR `assembleRelease` 成功（7 分 49 秒，SHA-256 见 `webrtc-patch/SHA256SUMS`）；Android 0.3.0 `:app:assembleDebug` 成功。
 - 内部音频、权限分离和独立静音停传已编译，等待用户双机验收；未运行测试、模拟器或 ADB。
+- 2026-10-13：根据首轮双机反馈定位并修复自定义模式随机刷新、正常重连误触发限流、错误状态无截止、输入规则与显示问题。
+- Android 0.3.1、Go build/vet 构建验证成功；等待用户复测问题 A–C。

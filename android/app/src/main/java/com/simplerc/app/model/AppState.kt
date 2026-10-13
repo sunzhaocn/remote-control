@@ -39,5 +39,6 @@ data class AppState(
     val audioStatus: String = "等待音频状态",
     val audioMuted: Boolean = false,
     val errorMessage: String? = null,
+    val retryAfterSeconds: Int? = null,
 )
 

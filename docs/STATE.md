@@ -1,6 +1,6 @@
 # SimpleRC 当前状态
 
-更新日期：2026-10-13。版本：0.3.0（versionCode 3，debug）。所有“已编译”仅表示构建验证，均未实机验证。
+更新日期：2026-10-13。版本：0.3.1（versionCode 4，debug）。用户已反馈问题 A–C；本次修复状态为“已编译，待复测”，不标记“我已验证”。
 
 ## 已编译
 
@@ -12,7 +12,7 @@
 
 - 补丁 AAR：`android/app/libs/stream-webrtc-android-simplerc-1.3.10.aar`，SHA-256 `8f218e65c7cde1faa4d6bfbb06e79eae3b0134921c65cf376034459acf7da337`。
 - 补丁 AAR 首次 WSL2 构建耗时 7 分 49 秒；实际占用：源码 258 MiB、Gradle 缓存 2.9 GiB、Android SDK 754 MiB。
-- `:app:assembleDebug` 成功；APK SHA-256 `1a5e329683c72bda7fcc47340fe004df586e2c2649aea039ba00a5edb8d237de`。
+- `:app:assembleDebug` 成功；APK SHA-256 `9ee002bf6d85c1299411fcb0b5dfd0ccc885a284b3d94ef21d0c64d990364e5c`。
 - `go build ./...`、`go vet ./...`、`docker compose config` 在上一交付已成功，本轮后端未改动。
 
 ## 未完成与限制
@@ -26,4 +26,11 @@
 ## 部署
 
 - 公网入口：`https://49.233.43.167:9443/simplerc/`；TURN 3480 UDP/TCP、5350 TLS。
-- APK 下载：`https://49.233.43.167:9443/simplerc-download/SimpleRC-0.3.0-debug.apk`。
+- APK 下载：`https://49.233.43.167:9443/simplerc-download/SimpleRC-0.3.1-debug.apk`。
+
+## 0.3.1 已编译，待复测
+
+- 问题 A：自定义模式不再启动或恢复随机刷新；冷启动保留模式；切回随机时服务端释放固定注册。
+- 问题 B：正常注册/心跳/重连不参与验证失败限流；超限按服务端秒数倒计时；所有注册等待有 20 秒超时，重连有 120 秒截止；错误界面有重试与停止。
+- 问题 C：ID 6–16 与验证码 12–32 的配置化规则已同时应用到客户端和服务端；输入实时提示、不截断，并可切换显示完整验证码。
+- 上述修复已完成 Android 与 Go 构建验证，均等待原双机环境复测。

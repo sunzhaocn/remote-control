@@ -17,8 +17,10 @@ class SignalClient(private val listener: Listener) {
 
     private val client = OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build()
     private var socket: WebSocket? = null
+    @Volatile private var closedByClient = false
 
     fun connect(wssUrl: String, deviceId: String, timestamp: Long, signature: String) {
+        closedByClient = false
         require(wssUrl.startsWith("wss://")) { "正式信令只允许 WSS" }
         val request = Request.Builder().url(wssUrl)
             .header("X-Device-Id", deviceId).header("X-Timestamp", timestamp.toString())
@@ -29,11 +31,11 @@ class SignalClient(private val listener: Listener) {
                 if (text.toByteArray().size <= SignalValidator.MAX_MESSAGE_BYTES) listener.onMessage(text)
                 else webSocket.close(1009, "message too large")
             }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = listener.onClosed(reason)
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = listener.onFailure(t.message ?: "网络错误")
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { if (!closedByClient) listener.onClosed(reason) }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (!closedByClient) listener.onFailure(t.message ?: "网络错误") }
         })
     }
 
     fun send(text: String): Boolean = socket?.send(text) == true
-    fun close() { socket?.close(1000, "client stop"); socket = null }
+    fun close() { closedByClient = true; socket?.close(1000, "client stop"); socket = null }
 }

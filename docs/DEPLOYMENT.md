@@ -16,3 +16,5 @@ Coturn 已用 `turn` profile 启动，监听 3480 UDP/TCP、5350 TLS，relay 范
 
 
 2026-10-13：0.3.0 debug APK 已上传并由公网入口返回 HTTP 200，Content-Length 71657210；服务器 SHA-256 与本地一致。
+
+2026-10-13：0.3.1 修复版后端与 APK 部署，服务端只对 CONNECT 验证失败限流；APK SHA-256 9ee002bf6d85c1299411fcb0b5dfd0ccc885a284b3d94ef21d0c64d990364e5c，Content-Length 71765888。

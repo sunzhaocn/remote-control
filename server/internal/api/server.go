@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"simplerc/server/internal/config"
@@ -86,10 +87,6 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 func (s *Server) registerDevice(w http.ResponseWriter, r *http.Request) {
-	if !s.allow(r.Context(), r, "register", "", "", 20) {
-		writeError(w, 429, "RATE_LIMITED")
-		return
-	}
 	var req registerRequest
 	if !decodeJSON(w, r, &req) || !fresh(req.Timestamp) {
 		writeError(w, 400, "INVALID_REQUEST")
@@ -115,7 +112,7 @@ func (s *Server) registerDevice(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 	deviceID, ts, sig := r.Header.Get("X-Device-Id"), r.Header.Get("X-Timestamp"), r.Header.Get("X-Signature")
-	if !s.allow(r.Context(), r, "ws", deviceID, "", 20) || deviceID == "" {
+	if deviceID == "" {
 		http.Error(w, "unauthorized", 401)
 		return
 	}
@@ -160,7 +157,11 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 		}
 		c.lastSeq = env.Sequence
 		if err := s.handle(c, env, r); err != nil {
-			s.sendError(c, env.SessionID, err.Error())
+			if limited, ok := err.(rateLimitError); ok {
+				s.sendErrorWithRetry(c, env.SessionID, limited.seconds)
+			} else {
+				s.sendError(c, env.SessionID, err.Error())
+			}
 		}
 	}
 }
@@ -168,26 +169,39 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 	switch env.Type {
 	case "REGISTER_RANDOM", "REGISTER_FIXED":
 		var p pairingPayload
-		if json.Unmarshal(env.Payload, &p) != nil || !validID(p.ID) || len(p.Code) < 8 {
+		if json.Unmarshal(env.Payload, &p) != nil || !validID(p.ID) || len(p.Code) < 8 || len(p.Code) > 32 || strings.IndexFunc(p.Code, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }) >= 0 {
 			return errors.New("INVALID_REQUEST")
-		}
-		if !s.allow(r.Context(), r, "pair", c.deviceID, p.ID, 10) {
-			return errors.New("RATE_LIMITED")
 		}
 		hash, err := security.HashCode(p.Code, s.cfg.CredentialPepper)
 		if err != nil {
 			return errors.New("SERVER_ERROR")
 		}
 		if env.Type == "REGISTER_FIXED" {
-			if len(p.Code) < 12 {
+			if len(p.Code) < 12 || len(p.Code) > 32 {
 				return errors.New("INVALID_REQUEST")
 			}
 			_, _ = s.db.Exec(r.Context(), `DELETE FROM fixed_ids WHERE last_online_at < now() - interval '180 days'`)
-			result, err := s.db.Exec(r.Context(), `INSERT INTO fixed_ids(normalized_id,device_id,code_hash) VALUES($1,$2,$3) ON CONFLICT(normalized_id) DO UPDATE SET code_hash=EXCLUDED.code_hash,updated_at=now(),last_online_at=now() WHERE fixed_ids.device_id=EXCLUDED.device_id`, p.ID, c.deviceID, hash)
-			if err != nil || result.RowsAffected() != 1 {
+			var owner string
+			lookupErr := s.db.QueryRow(r.Context(), `SELECT device_id::text FROM fixed_ids WHERE normalized_id=$1`, p.ID).Scan(&owner)
+			if lookupErr == nil && owner != c.deviceID {
+				return errors.New("ID_UNAVAILABLE")
+			}
+			if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
+				return errors.New("SERVER_ERROR")
+			}
+			tx, err := s.db.Begin(r.Context())
+			if err != nil {
+				return errors.New("SERVER_ERROR")
+			}
+			defer func() { _ = tx.Rollback(r.Context()) }()
+			if _, err = tx.Exec(r.Context(), `DELETE FROM fixed_ids WHERE device_id=$1`, c.deviceID); err == nil {
+				_, err = tx.Exec(r.Context(), `INSERT INTO fixed_ids(normalized_id,device_id,code_hash) VALUES($1,$2,$3)`, p.ID, c.deviceID, hash)
+			}
+			if err != nil || tx.Commit(r.Context()) != nil {
 				return errors.New("ID_UNAVAILABLE")
 			}
 		} else {
+			_, _ = s.db.Exec(r.Context(), `DELETE FROM fixed_ids WHERE device_id=$1`, c.deviceID)
 			ttl := time.Until(time.Unix(p.ExpiresAt, 0))
 			if ttl <= 0 || ttl > 6*time.Minute {
 				ttl = 5 * time.Minute
@@ -204,12 +218,10 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 			s.rdb.Expire(r.Context(), "pair:"+p.ID, ttl)
 		}
 		s.mu.Lock()
-		if env.Type == "REGISTER_RANDOM" {
-			for oldID, owner := range s.pairings {
-				if owner == c.deviceID && oldID != p.ID {
-					delete(s.pairings, oldID)
-					_ = s.rdb.Del(r.Context(), "pair:"+oldID, "pair-owner:"+oldID).Err()
-				}
+		for oldID, owner := range s.pairings {
+			if owner == c.deviceID && oldID != p.ID {
+				delete(s.pairings, oldID)
+				_ = s.rdb.Del(r.Context(), "pair:"+oldID, "pair-owner:"+oldID).Err()
 			}
 		}
 		s.pairings[p.ID] = c.deviceID
@@ -226,7 +238,15 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 		controlledID := s.pairings[p.TargetID]
 		controlled := s.clients[controlledID]
 		s.mu.RUnlock()
-		if !ok || controlled == nil || controlledID == c.deviceID {
+		if !ok {
+			if retry := s.recordValidationFailure(r.Context(), r, c.deviceID, p.TargetID); retry > 0 {
+				uniformFailureDelay(start)
+				return rateLimitError{retry}
+			}
+			uniformFailureDelay(start)
+			return errors.New("AUTH_FAILED")
+		}
+		if controlled == nil || controlledID == c.deviceID {
 			uniformFailureDelay(start)
 			return errors.New("AUTH_FAILED")
 		}
@@ -365,22 +385,33 @@ func (c *client) sendRaw(env protocol.Envelope) error {
 func (s *Server) sendError(c *client, sessionID, code string) {
 	_ = s.send(c, "ERROR", sessionID, map[string]any{"code": code})
 }
-func (s *Server) allow(ctx context.Context, r *http.Request, action, device, target string, max int) bool {
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
-	keys := []string{action + ":ip:" + host}
-	if device != "" {
-		keys = append(keys, action+":device:"+device)
+
+type rateLimitError struct{ seconds int }
+
+func (e rateLimitError) Error() string { return "RATE_LIMITED" }
+func (s *Server) sendErrorWithRetry(c *client, sessionID string, seconds int) {
+	_ = s.send(c, "ERROR", sessionID, map[string]any{"code": "RATE_LIMITED", "retryAfterSeconds": seconds})
+}
+func (s *Server) recordValidationFailure(ctx context.Context, r *http.Request, device, target string) int {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
 	}
-	if target != "" {
-		keys = append(keys, action+":target:"+target)
-	}
-	for _, key := range keys {
-		ok, err := s.limits.Allow(ctx, key, max, 10*time.Minute)
-		if err != nil || !ok {
-			return false
+	keys := []struct {
+		key string
+		max int
+	}{{"verify:ip:" + host, 20}, {"verify:device:" + device, 10}, {"verify:target:" + target, 10}}
+	retry := 0
+	for _, item := range keys {
+		ok, left, err := s.limits.RecordFailure(ctx, item.key, item.max, 10*time.Minute)
+		if err != nil {
+			return 60
+		}
+		if !ok && int(left.Seconds()) > retry {
+			retry = int(left.Seconds())
 		}
 	}
-	return true
+	return retry
 }
 func (s *Server) turnCredentials(deviceID string) map[string]any {
 	if s.cfg.TurnRealm == "" || s.cfg.TurnSecret == "" {
@@ -412,7 +443,7 @@ func verify(key *ecdsa.PublicKey, payload []byte, encoded string) bool {
 }
 func fresh(ts int64) bool { now := time.Now().UnixMilli(); return ts >= now-60_000 && ts <= now+10_000 }
 func validID(v string) bool {
-	if len(v) < 5 || len(v) > 32 || v != strings.ToLower(strings.TrimSpace(v)) {
+	if len(v) < 6 || len(v) > 16 || v != strings.ToLower(strings.TrimSpace(v)) {
 		return false
 	}
 	for _, r := range v {

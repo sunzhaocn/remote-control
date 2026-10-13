@@ -69,5 +69,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun confirmIncoming(accepted: Boolean) = sessions.confirmIncoming(accepted)
     fun registerFixed(id: String, code: String) = sessions.registerFixed(id, code)
     fun useRandomCredentials() = sessions.useRandomCredentials()
+    fun retryControlled() = sessions.retryControlled()
 }
 
