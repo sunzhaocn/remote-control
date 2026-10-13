@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS fixed_ids;
+DROP TABLE IF EXISTS devices;

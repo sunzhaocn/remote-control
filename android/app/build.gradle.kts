@@ -59,6 +59,7 @@ dependencies {
 
     // 阶段 1–4 使用标准预编译 AAR；阶段 5 的内部音频补丁不得成为前四阶段前置条件。
     implementation(libs.stream.webrtc)
+    implementation(libs.okhttp)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
