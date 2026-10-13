@@ -1,6 +1,6 @@
 # 审查指南（0.3.5）
 
-先读 STATE、BUG_FIX_0.3.4、DEVICE_TEST_0.3.3/0.3.4 和 VIDEO_DIAGNOSTICS。0.3.4 有部分双机证据，0.3.5 用户结束测试后仅构建；不要把旧结果移作独立控制连接或新策略通过。
+先读 STATE、BUG_FIX_0.3.4、DEVICE_TEST_0.3.3/0.3.4 和 VIDEO_DIAGNOSTICS。0.3.4 有部分双机证据，0.3.5已构建并按后续授权双机覆盖安装，仅核对版本、未继续测试；不要把旧结果移作独立控制连接或新策略通过。
 
 Android 下表简写路径的基目录是 `android/app/src/main/java/com/simplerc/app/`；服务端使用完整仓库路径。
 

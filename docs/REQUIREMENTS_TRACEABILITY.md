@@ -188,7 +188,7 @@
 
 | 修订 | 状态 | 实现文件/边界 |
 | --- | --- | --- |
-| 手机授权与结束测试 | 已实现 | REQUIREMENTS.md、DEVICE_TEST_0.3.4.md；结束后不继续ADB |
+| 手机授权与结束测试 | 已实现 | REQUIREMENTS.md、docs/DEVICE_TEST_0.3.4.md、docs/DEVICE_INSTALL_0.3.5.md；后续仅按新的明确授权安装及核对版本，不继续测试 |
 | 后端更新、APK不上传 | 已实现 | server/internal/api/server.go、STATE.md；服务器旧APK哈希保持 |
 | 15秒截止、明确重试/停止 | 已实现 | SessionCoordinator.kt、server/config；0.3.4候选有实机结果 |
 | 二次元简约/无障碍选项卡门禁/通知按钮 | 已实现 | MainScreen.kt、AccessibilityStatus.kt、MainActivity.kt |

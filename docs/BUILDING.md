@@ -1,6 +1,6 @@
 # 当前构建说明（0.3.5）
 
-本地APK：`artifacts/SimpleRC-0.3.5-debug.apk`，versionCode8，debug签名，哈希与大小见STATE。手机仍0.3.4；用户结束测试后不安装/操作手机。服务器仅接收后端，不上传Android APK。
+本地APK：`artifacts/SimpleRC-0.3.5-debug.apk`，versionCode8，debug签名，哈希与大小见STATE。用户随后明确授权安装，两台手机现均为0.3.5/code8，仅安装及核对版本，未继续测试。服务器仅接收后端，不上传Android APK。
 
 | 工具/依赖 | 固定配置 |
 | --- | --- |

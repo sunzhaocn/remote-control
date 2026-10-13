@@ -269,3 +269,7 @@ H.264 偏好基于本机硬件广告能力与实际 RTP capabilities；不手工
 ## 最大码率修订
 
 用户最新要求覆盖上面暂定6Mbps最大值：新策略不设置应用层最大码率（AppConfig.VIDEO_MAX_BITRATE_BPS=null），PeerConnection.setBitrate的max传null，sender encoding.maxBitrateBps也为null。库仍保留默认/编解码器限制并自动拥塞控制，不把null说成无限物理带宽或统一“理论最大Mbps”。保留2Mbps起始与300kbps最小；通知/面板读取实际目标和发送码率。若未来设有限最大值，总音频预留计算使用Long并饱和至Int最大，避免溢出。
+
+## D-043 后续安装授权（2026-10-13）
+
+用户明确要求安装到手机，因此允许将现有0.3.5 APK保留数据覆盖安装到两台已连接设备，并读取SimpleRC包版本核对0.3.5/code8；本次不恢复此前结束的测试。不重新构建或改变媒体策略，不启动远控、不调整权限、不读取日志或页面、不上传APK。安装成功与功能验收分开记录。
