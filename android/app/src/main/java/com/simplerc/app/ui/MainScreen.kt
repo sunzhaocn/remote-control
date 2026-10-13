@@ -1,6 +1,8 @@
 package com.simplerc.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -191,9 +193,9 @@ private fun ControllerPanel(state: AppState, viewModel: MainViewModel, compact: 
     var code by remember { mutableStateOf("") }
     var showCode by remember { mutableStateOf(false) }
     if (state.remoteVideoAvailable) { RemotePanel(state, viewModel); return }
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.padding(if (compact) 12.dp else 18.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(if (compact) 12.dp else 18.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp),
         ) {
             Text("连接另一台设备", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -247,9 +249,9 @@ private fun ControlledPanel(
     var showFixedCode by remember { mutableStateOf(false) }
     val idError = CredentialRules.idValidationText(fixedId)
     val codeError = CredentialRules.codeValidationText(fixedCode)
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.padding(if (compact) 12.dp else 18.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(if (compact) 12.dp else 18.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
         ) {
             Text("允许这台设备被控制", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
