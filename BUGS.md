@@ -15,3 +15,21 @@
 - 已确认事实：当前 Windows 环境找不到 `java`、`JAVA_HOME`、Android SDK、Android Studio 或全局 Gradle。
 - 影响：`gradlew.bat :app:assembleDebug` 在 Wrapper 启动前终止，尚未产生 APK，也无法确认源码编译结果。
 - 处理方式：安装 JDK 17、Android SDK Platform 36 和兼容 Build Tools，或提供现有安装路径后重新执行明确的 `:app:assembleDebug`。不需要连接手机。
+
+## GAP-002 端到端远控链路未完成
+
+- 状态：未完成
+- 影响：当前不能真实注册配对、建立 SDP/ICE、显示远端视频或通过 DataChannel 控制手机。
+- 缺口：后端业务路由、Android 仓库/UI接线、ScreenCapturerAndroid、轨道/渲染、会话确认和回执。
+
+## GAP-003 WebRTC 音频补丁未形成可应用构建
+
+- 状态：等待另行构建授权和固定上游修订
+- 影响：内部音频运行时不可用。
+- 事实：补丁目录目前包含变更规范，不是绑定具体上游 SHA 的最终行级 diff；没有 AAR 和 SHA-256。
+
+## GAP-004 后端与部署配置未验证
+
+- 状态：未构建/未校验
+- 影响：Go 代码可能有编译问题，Compose/Coturn 模板可能需修正。
+- 原因：本机没有 Go 或 Docker；未启动任何服务。

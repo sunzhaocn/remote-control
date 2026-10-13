@@ -155,3 +155,9 @@ Redis 使用 `SET NX PX` 原子占用，以目标 ID 为键、随机会话 ID �
 ### D-026 TURN 与路径
 
 只使用自建 Coturn。relay 按实际协议显示；host/srflx/prflx 只能说明 P2P，只有额外确认同一 LAN 才显示 LAN。TURN 密钥只在服务端环境中，客户端获取短期凭据。
+
+## 阶段 7
+
+### D-027 未构建交付标记
+
+由于 JDK、Android SDK、Go 和 Docker 均不可用，任何源码模块都不得标“已编译”。没有 APK、服务二进制或经过解析的 Compose 配置。最终审查以需求对照表和明确缺口为准。

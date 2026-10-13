@@ -53,3 +53,12 @@
 - 未完成项：恢复状态机尚未接入真实 PeerConnection；getStats 选中候选关联解析未完成；通知质量/路径动态更新和锁屏接收处理未接通。
 - 新增决策：用户停止和 projection 停止直接终止；恢复前同步状态；LAN 必须额外确认，host candidate 本身不足以判断。
 - 已知风险：Compose 模板尚未经 Docker 解析；Coturn 镜像/端口和目标部署网络需运维审查。
+
+## 阶段 7：构建、打包、文档和验收
+
+- 完成内容：审查指南、阶段 1–7 人工双机验收清单、问题反馈模板、错误码、依赖许可清单和需求条款对照表；静态解析 Android XML；复查无测试/设备钩子及音频权限未提前声明。
+- 修改范围：`README.md`、`docs/REVIEW_GUIDE.md`、`ACCEPTANCE_CHECKLIST.md`、`REQUIREMENTS_TRACEABILITY.md`、`ERROR_CODES.md`、`LICENSES.md`、状态/决策/进度。
+- 构建状态：未构建。再次执行 `:app:assembleDebug`，仍因 `JAVA_HOME` 未设置且无 Java 在 Wrapper 启动前终止。没有 APK。Go/Docker 不存在，未运行 `go build`、`go vet` 或 `docker compose config`。
+- 未完成项：阶段 2–6 对照表列出的端到端接线和服务端路由；WebRTC 音频补丁构建；所有实机验证。
+- 新增决策：最终交付以审计真实性为先，缺失链路保持“部分实现/未实现”，不生成空 APK 路径或虚构构建结果。
+- 已知风险：Kotlin/Go/Gradle/Compose 均未经编译器验证；依赖可解析性、Docker 模板和运行时 API 可能仍有错误。
