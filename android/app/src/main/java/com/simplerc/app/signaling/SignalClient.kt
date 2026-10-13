@@ -12,10 +12,10 @@ class SignalClient(private val listener: Listener) {
         fun onOpen()
         fun onMessage(text: String)
         fun onClosed(reason: String)
-        fun onFailure(message: String)
+        fun onFailure(failure: ConnectionFailure)
     }
 
-    private val client = OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build()
+    private val client = sharedClient
     private var socket: WebSocket? = null
     @Volatile private var closedByClient = false
 
@@ -26,16 +26,17 @@ class SignalClient(private val listener: Listener) {
             .header("X-Device-Id", deviceId).header("X-Timestamp", timestamp.toString())
             .header("X-Signature", signature).build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) = listener.onOpen()
+            override fun onOpen(webSocket: WebSocket, response: Response) { if (!closedByClient) listener.onOpen() }
             override fun onMessage(webSocket: WebSocket, text: String) {
-                if (text.toByteArray().size <= SignalValidator.MAX_MESSAGE_BYTES) listener.onMessage(text)
+                if (!closedByClient && text.toByteArray().size <= SignalValidator.MAX_MESSAGE_BYTES) listener.onMessage(text)
                 else webSocket.close(1009, "message too large")
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { if (!closedByClient) listener.onClosed(reason) }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (!closedByClient) listener.onFailure(t.message ?: "网络错误") }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (!closedByClient) listener.onFailure(connectionFailure(t,response?.code,response?.header("Retry-After")?.toIntOrNull() ?: 0)) }
         })
     }
 
     fun send(text: String): Boolean = socket?.send(text) == true
-    fun close() { closedByClient = true; socket?.close(1000, "client stop"); socket = null }
+    fun close() { closedByClient = true; socket?.cancel(); socket = null }
+    companion object { private val sharedClient = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).pingInterval(15, TimeUnit.SECONDS).build() }
 }

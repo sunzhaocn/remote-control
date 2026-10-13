@@ -72,6 +72,8 @@ object AppStateStore {
                 activeSessionId = null,
                 controlEnabled = false,
                 remoteVideoAvailable = false,
+                credentialsRegistered = false,
+                credentialPublishing = false,
             )
         }
     }

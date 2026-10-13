@@ -37,14 +37,13 @@ class MainActivity : ComponentActivity() {
             val projectionManager = getSystemService(MediaProjectionManager::class.java)
             val screenCapture = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 val data = result.data
-                if (result.resultCode == Activity.RESULT_OK && data != null) {
+                if (result.resultCode == Activity.RESULT_OK && data != null && viewModel.state.value.incomingSessionId != null) {
                     viewModel.confirmIncoming(true)
                     ContextCompat.startForegroundService(context, Intent(context, ScreenShareService::class.java).apply {
                         putExtra(ScreenShareService.EXTRA_RESULT_CODE, result.resultCode)
                         putExtra(ScreenShareService.EXTRA_DATA, data)
                         putExtra(ScreenShareService.EXTRA_AUDIO_ENABLED, viewModel.state.value.audioSharingAllowed && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
                     })
-                    SessionMedia.instance(application).startControlledCapture(result.resultCode, data)
                 } else viewModel.confirmIncoming(false)
             }
             val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -55,8 +54,11 @@ class MainActivity : ComponentActivity() {
                 viewModel.refreshPermissions()
             }
             val appState = viewModel.state.collectAsStateWithLifecycle().value
-            LaunchedEffect(appState.remoteRotation, appState.sessionState) {
-                requestedOrientation = when (appState.remoteRotation) {
+            LaunchedEffect(appState.role, appState.activeSessionId, appState.remoteRotation, appState.sessionState) {
+                requestedOrientation = when (
+                    if (appState.role == com.simplerc.app.model.DeviceRole.CONTROLLER && appState.activeSessionId != null)
+                        appState.remoteRotation else null
+                ) {
                     90, 270 -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     0, 180 -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                     else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED

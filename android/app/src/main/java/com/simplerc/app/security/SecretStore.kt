@@ -16,9 +16,18 @@ class SecretStore(context: Context) {
     private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
     fun put(name: String, value: String) {
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, key()) }
-        val encoded = Base64.getEncoder().encodeToString(cipher.iv + cipher.doFinal(value.toByteArray()))
-        preferences.edit().putString(name, encoded).apply()
+        putAll(mapOf(name to value))
+    }
+
+    @Synchronized
+    fun putAll(values: Map<String, String>) {
+        val editor = preferences.edit()
+        values.forEach { (name, value) ->
+            val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, key()) }
+            val encoded = Base64.getEncoder().encodeToString(cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)))
+            editor.putString(name, encoded)
+        }
+        check(editor.commit()) { "本机凭据保存失败" }
     }
 
     fun get(name: String): String? = preferences.getString(name, null)?.let { encoded ->
@@ -33,6 +42,7 @@ class SecretStore(context: Context) {
 
     fun clear() = preferences.edit().clear().apply()
 
+    @Synchronized
     private fun key(): SecretKey {
         (keyStore.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").run {

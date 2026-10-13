@@ -8,16 +8,17 @@ data class PairingCredentials(val id: String, val code: String, val expiresAtEpo
 object CredentialRules {
     private val random = SecureRandom()
     private val allowedId = Regex("^[a-z0-9_-]{${AppConfig.PAIRING_ID_MIN_LENGTH},${AppConfig.PAIRING_ID_MAX_LENGTH}}$")
-    private val reserved = setOf("admin", "root", "support", "system", "simplerc")
+    private val reserved = setOf("admin", "root", "support", "system", "simplerc", "official")
 
-    fun normalizeId(raw: String): String = raw.lowercase()
-    fun validId(raw: String): Boolean = normalizeId(raw).let { allowedId.matches(it) && it !in reserved }
+    fun normalizeId(raw: String): String = raw.lowercase(java.util.Locale.ROOT)
+    private fun isReserved(value: String) = reserved.any { value == it || value.contains(it + "_") }
+    fun validId(raw: String): Boolean = normalizeId(raw).let { allowedId.matches(it) && !isReserved(it) }
     fun validCustomCode(value: String): Boolean = value.length in AppConfig.CUSTOM_CODE_MIN_LENGTH..AppConfig.CUSTOM_CODE_MAX_LENGTH && value.none(Char::isWhitespace)
     fun idValidationText(value: String): String? = when {
         value.length < AppConfig.PAIRING_ID_MIN_LENGTH -> "还需 ${AppConfig.PAIRING_ID_MIN_LENGTH - value.length} 个字符"
         value.length > AppConfig.PAIRING_ID_MAX_LENGTH -> "最多 ${AppConfig.PAIRING_ID_MAX_LENGTH} 个字符，当前多 ${value.length - AppConfig.PAIRING_ID_MAX_LENGTH} 个"
-        !value.all { it.isLetterOrDigit() || it == '-' || it == '_' } -> "只能使用字母、数字、-、_"
-        normalizeId(value) in reserved -> "该 ID 不可使用"
+        !allowedId.matches(normalizeId(value)) -> "只能使用英文字母、数字、-、_"
+        isReserved(normalizeId(value)) -> "该 ID 不可使用"
         else -> null
     }
     fun codeValidationText(value: String): String? = when {

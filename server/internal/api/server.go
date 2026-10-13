@@ -146,6 +146,12 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(protocol.MaxMessageBytes)
 	_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 	conn.SetPongHandler(func(string) error { return conn.SetReadDeadline(time.Now().Add(45 * time.Second)) })
+	conn.SetPingHandler(func(data string) error {
+		if err := conn.SetReadDeadline(time.Now().Add(45 * time.Second)); err != nil {
+			return err
+		}
+		return conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(10*time.Second))
+	})
 	for {
 		var env protocol.Envelope
 		if conn.ReadJSON(&env) != nil {
@@ -156,6 +162,7 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		c.lastSeq = env.Sequence
+		_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 		if err := s.handle(c, env, r); err != nil {
 			if limited, ok := err.(rateLimitError); ok {
 				s.sendErrorWithRetry(c, env.SessionID, limited.seconds)
@@ -360,10 +367,10 @@ func (s *Server) removeClient(c *client) {
 	s.mu.Lock()
 	if s.clients[c.deviceID] == c {
 		delete(s.clients, c.deviceID)
-	}
-	for id, d := range s.pairings {
-		if d == c.deviceID {
-			delete(s.pairings, id)
+		for id, d := range s.pairings {
+			if d == c.deviceID {
+				delete(s.pairings, id)
+			}
 		}
 	}
 	s.mu.Unlock()

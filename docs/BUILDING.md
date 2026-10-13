@@ -1,5 +1,11 @@
 # SimpleRC 构建说明
 
+## 当前 0.3.3 产物
+
+Android assembleDebug 在 WSL2 Ubuntu/JDK17/SDK36 完成；仅编译，不自动测试或设备操作。
+本地命名产物：android/app/build/outputs/apk/debug/SimpleRC-0.3.3-debug.apk，SHA-256 以 STATE.md 为准。原 app-debug.apk 也保留，同一构建。
+Go build/vet 和 Linux amd64 交叉编译已完成，服务器仅接收后端二进制/源文件；本轮不上传 Android APK。
+
 ## 阶段 1 工具链
 
 | 组件 | 固定版本 |

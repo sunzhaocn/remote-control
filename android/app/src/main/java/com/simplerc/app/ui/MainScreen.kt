@@ -57,6 +57,7 @@ import com.simplerc.app.model.SessionState
 import com.simplerc.app.session.SessionMedia
 import com.simplerc.app.geometry.RectPx
 import com.simplerc.app.credentials.CredentialRules
+import com.simplerc.app.BuildConfig
 import org.webrtc.SurfaceViewRenderer
 
 private val Brand = Color(0xFF176B5B)
@@ -84,13 +85,16 @@ fun SimpleRcApp(
                     .padding(16.dp),
             ) {
                 val compactHeight = maxHeight < 620.dp
+                if (state.role == DeviceRole.CONTROLLER && state.remoteVideoAvailable) {
+                    RemotePanel(state, viewModel)
+                } else {
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(if (compactHeight) 8.dp else 12.dp),
                 ) {
                     StatusHeader(state)
                     RoleSelector(state.role, viewModel::selectRole)
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
                         if (state.role == DeviceRole.CONTROLLER) {
                             ControllerPanel(state, viewModel, compactHeight)
                         } else {
@@ -117,6 +121,7 @@ fun SimpleRcApp(
                         color = Color(0xFF52645F),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
                 }
             }
         }
@@ -158,9 +163,9 @@ private fun StatusHeader(state: AppState) {
                 ),
             )
             Spacer(Modifier.width(10.dp))
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (state.role == DeviceRole.CONTROLLER) "控制端" else "被控端",
+                    text = (if (state.role == DeviceRole.CONTROLLER) "控制端" else "被控端") + " · " + BuildConfig.VERSION_NAME,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(state.statusDetail, style = MaterialTheme.typography.bodySmall)
@@ -192,10 +197,9 @@ private fun ControllerPanel(state: AppState, viewModel: MainViewModel, compact: 
     var targetId by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var showCode by remember { mutableStateOf(false) }
-    if (state.remoteVideoAvailable) { RemotePanel(state, viewModel); return }
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxSize()) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(if (compact) 12.dp else 18.dp),
+            modifier = Modifier.fillMaxWidth().padding(if (compact) 12.dp else 18.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 12.dp),
         ) {
             Text("连接另一台设备", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -243,27 +247,29 @@ private fun ControlledPanel(
     requestNotificationPermission: () -> Unit,
     openBatterySettings: () -> Unit,
 ) {
-    var fixedId by remember(state.fixedCredentialMode) { mutableStateOf(if (state.fixedCredentialMode) state.localId else "") }
-    var fixedCode by remember(state.fixedCredentialMode) { mutableStateOf(if (state.fixedCredentialMode) state.localCode else "") }
+    var fixedId by remember(state.savedFixedId) { mutableStateOf(state.savedFixedId) }
+    var fixedCode by remember(state.savedFixedCode) { mutableStateOf(state.savedFixedCode) }
     var showLocalCode by remember { mutableStateOf(false) }
     var showFixedCode by remember { mutableStateOf(false) }
     val idError = CredentialRules.idValidationText(fixedId)
     val codeError = CredentialRules.codeValidationText(fixedCode)
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxSize()) {
+    val canEditMode = !state.credentialPublishing && state.sessionState !in listOf(SessionState.WAITING_CONFIRMATION, SessionState.CONNECTING, SessionState.CONNECTED, SessionState.RECONNECTING)
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(if (compact) 12.dp else 18.dp),
+            modifier = Modifier.fillMaxWidth().padding(if (compact) 12.dp else 18.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
         ) {
             Text("允许这台设备被控制", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!state.fixedCredentialMode) Button(onClick = onUseRandom, modifier = Modifier.weight(1f)) { Text("随机凭据") }
-                else OutlinedButton(onClick = onUseRandom, modifier = Modifier.weight(1f)) { Text("随机凭据") }
-                if (state.fixedCredentialMode) Button(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = idError == null && codeError == null, modifier = Modifier.weight(1f)) { Text("保存自定义") }
-                else OutlinedButton(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = idError == null && codeError == null, modifier = Modifier.weight(1f)) { Text("保存自定义") }
+                if (!state.fixedCredentialMode) Button(onClick = onUseRandom, enabled = canEditMode, modifier = Modifier.weight(1f)) { Text("随机凭据") }
+                else OutlinedButton(onClick = onUseRandom, enabled = canEditMode, modifier = Modifier.weight(1f)) { Text("随机凭据") }
+                OutlinedButton(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = canEditMode && idError == null && codeError == null, modifier = Modifier.weight(1f)) { Text("保存自定义") }
             }
+            Text(if (state.fixedCredentialMode) "当前模式：自定义" else "当前模式：随机")
             OutlinedTextField(value=fixedId,onValueChange={fixedId=it},label={Text("自定义 ID（6–16 位）")},singleLine=true,isError=fixedId.isNotEmpty()&&idError!=null,supportingText={Text(idError ?: "可使用字母、数字、-、_；保存时统一为小写")},modifier=Modifier.fillMaxWidth())
             OutlinedTextField(value=fixedCode,onValueChange={fixedCode=it},label={Text("自定义验证码（12–32 位）")},singleLine=true,isError=fixedCode.isNotEmpty()&&codeError!=null,supportingText={Text(codeError ?: "长度符合要求且不含空白")},visualTransformation=if(showFixedCode)VisualTransformation.None else PasswordVisualTransformation(),trailingIcon={TextButton(onClick={showFixedCode=!showFixedCode}){Text(if(showFixedCode)"隐藏" else "显示")}},modifier=Modifier.fillMaxWidth())
             InfoLine("本机 ID", state.localId.ifBlank { "启用后生成" })
+            Text(if (state.credentialsRegistered) "服务器已确认注册" else "当前凭据尚未注册上线", style = MaterialTheme.typography.labelSmall)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("验证码", color = Color(0xFF52645F), modifier = Modifier.width(86.dp))
                 Text(if (state.localCode.isBlank() || !showLocalCode) "••••••••" else state.localCode, modifier = Modifier.weight(1f))
@@ -291,13 +297,13 @@ private fun ControlledPanel(
             ) {
                 Text(if (state.standbyServiceRunning) "停止被控" else "启用被控")
             }
-            if (state.standbyServiceRunning) {
+            run {
                 Text(
                     state.statusDetail,
                     style = MaterialTheme.typography.bodySmall,
                     color = Brand,
                 )
-                if(state.sessionState==SessionState.ERROR){
+                if(state.sessionState==SessionState.ERROR && state.standbyServiceRunning){
                     Row(modifier=Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)){
                         OutlinedButton(onClick=onRetry,enabled=state.retryAfterSeconds.let{it==null||it==0},modifier=Modifier.weight(1f)){Text(if((state.retryAfterSeconds?:0)>0)"等待 ${state.retryAfterSeconds}s" else "重试")}
                         Button(onClick=onStop,modifier=Modifier.weight(1f)){Text("停止")}

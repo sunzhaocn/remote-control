@@ -1,5 +1,11 @@
 # 部署与 TURN
 
+## 2026-10-13 后端修复更新（APK 未更新）
+
+按用户澄清，仅更新后端 server 容器：Ping/合法消息延長读取期限、旧连接退出按归属清理。部署前在 shared 目录保留旧二进制和 api 源文件；未修改数据库、Redis、Coturn 或密钥。Compose config --quiet 成功；重建后正常 TLS 的公网 healthz 返回 204。
+
+服务器后端 SHA-256：8d107fdbbb2c7734462e1806072463eb609375c2668a6f8cdbde185dd6cf45b0。服务器 SimpleRC-0.3.1-debug.apk 仍为 9ee002bf6d85c1299411fcb0b5dfd0ccc885a284b3d94ef21d0c64d990364e5c，0.3.3 APK 未上传。
+
 当前环境使用用户提供服务器的公网 IP 证书；运行秘密只保存在服务器 `/opt/simplerc/shared/runtime.env`，不进入仓库。
 
 信令必须通过 HTTPS/WSS。Coturn 提供同一自建服务的 STUN、TURN/UDP、TURN/TCP 和 TURN/TLS；UDP 通常延迟最低，TCP/TLS 是受限网络回退且可能增加延迟。TURN 凭据由服务端用共享密钥签发短期用户名/密码，APK 不保存永久 TURN 密钥。

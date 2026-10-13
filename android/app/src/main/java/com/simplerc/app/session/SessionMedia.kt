@@ -21,6 +21,10 @@ import org.webrtc.*
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class SessionMedia private constructor(private val app: Application) : AutoCloseable {
     private val engine = WebRtcEngine(app)
@@ -44,6 +48,9 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private var lastControlSequence = 0L
     private var pendingCapture: Pair<Int, Intent>? = null
     private var configuredIceServers: List<PeerConnection.IceServer> = emptyList()
+    private val callbackScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var remoteDescriptionReady = false
+    private val pendingRemoteIce = mutableListOf<IceCandidate>()
 
     fun onConfirmed(id: String, payload: JSONObject, send: (String, String, JSONObject) -> Boolean) {
         sessionId = id
@@ -57,6 +64,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     fun startControlledCapture(resultCode: Int, data: Intent) {
         if (AppStateStore.state.value.role != DeviceRole.CONTROLLED) return
         if (sessionId == null) { pendingCapture = resultCode to data; return }
+        if (videoCapturer != null) return
         ensurePeer()
         val capturer = ScreenCapturerAndroid(data, object : MediaProjection.Callback() {
             override fun onStop() { stopSession("屏幕共享已由系统停止") }
@@ -86,7 +94,11 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         when (type) {
             "OFFER" -> setRemoteDescription(SessionDescription.Type.OFFER, payload.getString("sdp")) { createAnswer() }
             "ANSWER" -> setRemoteDescription(SessionDescription.Type.ANSWER, payload.getString("sdp")) {}
-            "ICE" -> peer?.addIceCandidate(IceCandidate(payload.optString("sdpMid"), payload.optInt("sdpMLineIndex"), payload.getString("candidate")))
+            "ICE" -> {
+                val candidate = IceCandidate(payload.optString("sdpMid"), payload.optInt("sdpMLineIndex"), payload.getString("candidate"))
+                if (remoteDescriptionReady) peer?.addIceCandidate(candidate)
+                else if (pendingRemoteIce.size < 256) pendingRemoteIce.add(candidate)
+            }
             "GEOMETRY" -> {
                 geometry = RemoteGeometry(payload.getLong("version"), RectPx(payload.optDouble("left").toFloat(), payload.optDouble("top").toFloat(), payload.getDouble("width").toFloat(), payload.getDouble("height").toFloat()), payload.getInt("screenWidth"), payload.getInt("screenHeight"), payload.getInt("rotation"))
                 AppStateStore.update { it.copy(controlEnabled = true, remoteRotation = geometry.rotationDegrees, remoteCaptureWidth = geometry.capture.width.toInt(), remoteCaptureHeight = geometry.capture.height.toInt()) }
@@ -192,17 +204,45 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private fun sendAudioAck(command:String,ok:Boolean){sessionId?.let{signalSend?.invoke("AUDIO_STATE",it,JSONObject().put("command",command).put("ok",ok))}}
     private fun observeControl(channel: DataChannel) { channel.registerObserver(object:DataChannel.Observer{override fun onBufferedAmountChange(p0:Long)=Unit;override fun onStateChange()=Unit;override fun onMessage(buffer:DataChannel.Buffer){val bytes=ByteArray(buffer.data.remaining());buffer.data.get(bytes);handleControl(JSONObject(String(bytes)))}}) }
     private fun handleControl(value:JSONObject){if(AppStateStore.state.value.role!=DeviceRole.CONTROLLED)return;val id=sessionId?:return;if(value.optString("sessionId")!=id)return;val seq=value.optLong("sequence");if(seq<=lastControlSequence||System.currentTimeMillis()-value.optLong("createdAtMs") !in 0..2000||value.optLong("geometryVersion")!=geometry.version)return;lastControlSequence=seq;val kind=value.optString("kind");val points=value.optJSONArray("points")?:JSONArray();fun point(index:Int):Pair<Float,Float>?{val p=points.optJSONObject(index)?:return null;val mapped=mapper.normalizedToRemote(NormalizedCoordinate(p.optDouble("x").toFloat(),p.optDouble("y").toFloat()),geometry)?:return null;return mapped.x to mapped.y};val service=RemoteControlAccessibilityService.instance?:return;when(kind){"TAP"->point(0)?.let{service.performTap(it.first,it.second)};"LONG_PRESS"->point(0)?.let{service.performTap(it.first,it.second,600)};"SWIPE"->{val path=(0 until points.length()).mapNotNull(::point);if(path.size==points.length()&&path.size>=2)service.performSwipe(path,600)};"BACK"->service.performNavigation(com.simplerc.app.control.ControlKind.BACK);"HOME"->service.performNavigation(com.simplerc.app.control.ControlKind.HOME);"RECENTS"->service.performNavigation(com.simplerc.app.control.ControlKind.RECENTS)}}
-    private fun createOffer(){peer?.createOffer(sdpObserver{description->peer?.setLocalDescription(sdpObserver{},description);sessionId?.let{signalSend?.invoke("OFFER",it,JSONObject().put("sdp",description.description))}},MediaConstraints())}
-    private fun createRestartOffer(){val constraints=MediaConstraints().apply{mandatory.add(MediaConstraints.KeyValuePair("IceRestart","true"))};peer?.createOffer(sdpObserver{description->peer?.setLocalDescription(sdpObserver{},description);sessionId?.let{signalSend?.invoke("OFFER",it,JSONObject().put("sdp",description.description))}},constraints)}
-    private fun createAnswer(){peer?.createAnswer(sdpObserver{description->peer?.setLocalDescription(sdpObserver{},description);sessionId?.let{signalSend?.invoke("ANSWER",it,JSONObject().put("sdp",description.description))}},MediaConstraints())}
-    private fun setRemoteDescription(type:SessionDescription.Type,sdp:String,done:()->Unit){peer?.setRemoteDescription(sdpObserver{done()},SessionDescription(type,sdp))}
-    private fun sdpObserver(success:(SessionDescription)->Unit={}):SdpObserver=object:SdpObserver{override fun onCreateSuccess(p0:SessionDescription){success(p0)};override fun onSetSuccess()=Unit;override fun onCreateFailure(p0:String?) { stopSession(p0?:"媒体协商失败") };override fun onSetFailure(p0:String?){stopSession(p0?:"媒体协商失败")}}
+    private fun createOffer() { peer?.createOffer(sdpObserver(created={ publishLocalDescription("OFFER",it) }),MediaConstraints()) }
+    private fun createRestartOffer() {
+        val constraints=MediaConstraints().apply { mandatory.add(MediaConstraints.KeyValuePair("IceRestart","true")) }
+        peer?.createOffer(sdpObserver(created={ publishLocalDescription("OFFER",it) }),constraints)
+    }
+    private fun createAnswer() { peer?.createAnswer(sdpObserver(created={ publishLocalDescription("ANSWER",it) }),MediaConstraints()) }
+    private fun publishLocalDescription(type:String,description:SessionDescription) {
+        peer?.setLocalDescription(sdpObserver(set={
+            sessionId?.let { signalSend?.invoke(type,it,JSONObject().put("sdp",description.description)) }
+        }),description)
+    }
+    private fun setRemoteDescription(type:SessionDescription.Type,sdp:String,done:()->Unit) {
+        remoteDescriptionReady=false
+        peer?.setRemoteDescription(sdpObserver(set={
+            remoteDescriptionReady=true
+            pendingRemoteIce.forEach { peer?.addIceCandidate(it) }
+            pendingRemoteIce.clear()
+            done()
+        }),SessionDescription(type,sdp))
+    }
+    private fun sdpObserver(created:(SessionDescription)->Unit={},set:()->Unit={}):SdpObserver {
+        val expectedSession=sessionId
+        val expectedPeer=peer
+        fun dispatch(action:()->Unit) { callbackScope.launch {
+            if(sessionId==expectedSession && peer===expectedPeer && expectedPeer!=null) action()
+        } }
+        return object:SdpObserver {
+            override fun onCreateSuccess(description:SessionDescription) = dispatch { created(description) }
+            override fun onSetSuccess() = dispatch(set)
+            override fun onCreateFailure(reason:String?) = dispatch { stopSession("媒体描述创建失败（SDP_CREATE_FAILED）") }
+            override fun onSetFailure(reason:String?) = dispatch { stopSession("媒体描述设置失败（SDP_SET_FAILED）") }
+        }
+    }
     private fun sendGeometry(){val id=sessionId?:return;signalSend?.invoke("GEOMETRY",id,JSONObject().put("version",geometry.version).put("left",geometry.capture.left).put("top",geometry.capture.top).put("width",geometry.capture.width).put("height",geometry.capture.height).put("screenWidth",geometry.screenWidth).put("screenHeight",geometry.screenHeight).put("rotation",geometry.rotationDegrees))}
     private fun currentGeometry(version:Long):RemoteGeometry{val metrics=DisplayMetrics();@Suppress("DEPRECATION")(app.getSystemService(WindowManager::class.java).defaultDisplay.getRealMetrics(metrics));val rotation=app.getSystemService(WindowManager::class.java).defaultDisplay.rotation*90;return RemoteGeometry(version,RectPx(0f,0f,metrics.widthPixels.toFloat(),metrics.heightPixels.toFloat()),metrics.widthPixels,metrics.heightPixels,rotation)}
     private fun parseIceServers(payload: JSONObject): List<PeerConnection.IceServer> { val out=mutableListOf<PeerConnection.IceServer>();val array=payload.optJSONArray("iceServers")?:return out;for(i in 0 until array.length()){val item=array.optJSONObject(i)?:continue;val urlsJson=item.optJSONArray("urls")?:continue;val urls=(0 until urlsJson.length()).mapNotNull{urlsJson.optString(it).takeIf(String::isNotBlank)};if(urls.isNotEmpty())out+=PeerConnection.IceServer.builder(urls).setUsername(item.optString("username")).setPassword(item.optString("credential")).createIceServer()};return out}
     private fun captureWidth(m:DisplayMetrics)=if(m.widthPixels>=m.heightPixels)1280 else 720
     private fun captureHeight(m:DisplayMetrics)=if(m.widthPixels>=m.heightPixels)720 else 1280
     private fun stopSession(reason:String){AppStateStore.update{it.copy(sessionState=SessionState.ERROR,statusDetail=reason,controlEnabled=false)};close()}
-    override fun close(){stopInternalAudio();runCatching{videoCapturer?.stopCapture()};engine.setMediaProjection(null);videoCapturer?.dispose();videoTrack?.dispose();videoSource?.dispose();textureHelper?.dispose();controlChannel?.close();controlChannel?.dispose();peer?.close();peer?.dispose();videoCapturer=null;peer=null;controlChannel=null;remoteTrack=null;remoteAudioTrack=null;audioSender=null}
-    companion object { @Volatile private var shared:SessionMedia?=null;fun instance(app:Application)=shared?:synchronized(this){shared?:SessionMedia(app).also{shared=it}} }
+    override fun close(){sessionId=null;pendingCapture=null;remoteDescriptionReady=false;pendingRemoteIce.clear();stopInternalAudio();runCatching{videoCapturer?.stopCapture()};engine.setMediaProjection(null);videoCapturer?.dispose();videoTrack?.dispose();videoSource?.dispose();textureHelper?.dispose();controlChannel?.close();controlChannel?.dispose();peer?.close();peer?.dispose();videoCapturer=null;videoTrack=null;videoSource=null;textureHelper=null;peer=null;controlChannel=null;remoteTrack=null;remoteAudioTrack=null;audioSender=null;lastControlSequence=0;geometry=currentGeometry(0)}
+    companion object { @Volatile private var shared:SessionMedia?=null;fun instance(app:Application)=shared?:synchronized(this){shared?:SessionMedia(app).also{shared=it}}; fun closeIfCreated(){shared?.close()} }
 }

@@ -14,6 +14,7 @@ import com.simplerc.app.R
 import com.simplerc.app.state.AppStateStore
 
 class StandbyService : Service() {
+    private var started = false
     override fun onCreate() {
         super.onCreate()
         NotificationChannels.create(this)
@@ -24,6 +25,7 @@ class StandbyService : Service() {
             stopStandby()
             return START_NOT_STICKY
         }
+        if (started) return START_NOT_STICKY
 
         ServiceCompat.startForeground(
             this,
@@ -36,10 +38,13 @@ class StandbyService : Service() {
             },
         )
         AppStateStore.onStandbyServiceStarted()
+        started = true
+        (application as com.simplerc.app.SimpleRcApplication).sessions.startControlled()
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        (application as com.simplerc.app.SimpleRcApplication).sessions.stop()
         AppStateStore.onStandbyServiceStopped()
         super.onDestroy()
     }
@@ -47,6 +52,7 @@ class StandbyService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun stopStandby() {
+        (application as com.simplerc.app.SimpleRcApplication).sessions.stop()
         AppStateStore.onStandbyServiceStopped()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()

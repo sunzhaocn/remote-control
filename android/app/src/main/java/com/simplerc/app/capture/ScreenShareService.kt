@@ -29,6 +29,18 @@ class ScreenShareService : Service() {
             .setSmallIcon(R.drawable.ic_simplerc).setContentTitle("正在共享屏幕").setContentText("可立即停止共享").setOngoing(true).addAction(0, "停止", stopIntent).build(),
             foregroundTypes)
         consumed = true
+        runCatching {
+            com.simplerc.app.session.SessionMedia.instance(application).startControlledCapture(resultCode, data)
+        }.onFailure {
+            (application as com.simplerc.app.SimpleRcApplication).sessions.disconnect()
+            com.simplerc.app.state.AppStateStore.update { state -> state.copy(
+                sessionState = com.simplerc.app.model.SessionState.ERROR,
+                statusDetail = "屏幕采集启动失败（CAPTURE_START_FAILED）",
+                errorMessage = "CAPTURE_START_FAILED",
+            ) }
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
         return START_NOT_STICKY
     }
     private fun stopProjection() { com.simplerc.app.session.SessionMedia.instance(application).close(); (application as? com.simplerc.app.SimpleRcApplication)?.sessions?.disconnect(); ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE); stopSelf() }

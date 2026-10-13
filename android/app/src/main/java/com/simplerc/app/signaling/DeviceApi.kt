@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class DeviceApi(private val identity: DeviceIdentity) {
-    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
+    private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).callTimeout(20, TimeUnit.SECONDS).build()
 
     fun register(): Result<String> = runCatching {
         val timestamp = System.currentTimeMillis()
@@ -20,7 +20,7 @@ class DeviceApi(private val identity: DeviceIdentity) {
         val request = Request.Builder().url("${AppConfig.SIGNALING_BASE_URL}/v1/devices/register")
             .post(body.toRequestBody("application/json".toMediaType())).build()
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("设备注册失败（${response.code}）")
+            if (!response.isSuccessful) throw connectionFailure(java.io.IOException(), response.code, response.header("Retry-After")?.toIntOrNull() ?: 0)
             JSONObject(response.body?.string().orEmpty()).getString("deviceId")
         }
     }

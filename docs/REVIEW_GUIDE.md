@@ -1,5 +1,15 @@
 # 审查指南
 
+## 第二轮反馈 0.3.3 审查入口
+
+- 根因/推测/复测：docs/BUG_FIX_0.3.3.md。
+- 整页约束与版本显示：ui/MainScreen.kt。
+- 一次加密持久化：security/SecretStore.kt；本机配置与注册确认：session/SessionCoordinator.kt、model/AppState.kt。
+- 握手错误分类/过期 socket 隔离：signaling/ConnectionFailure.kt、signaling/SignalClient.kt、SessionCoordinator。
+- SDP 创建/设置回调、ICE 缓存和会话清理：session/SessionMedia.kt。
+- 前台服务启动后注册/采集：service/StandbyService.kt、capture/ScreenShareService.kt、MainActivity.kt。
+- 服务端心跳期限和旧连接清理归属：server/internal/api/server.go 的 webSocket/removeClient。本轮仅该后端补丁部署，APK 保持本地。
+
 当前交付已经构建验证、尚未实机验证。请先看 `STATE.md` 和 `PHASE_REPORTS.md`，不要从编译成功或目录存在推断功能已端到端完成。
 
 | 模块 | 关键文件 | 审查重点 |

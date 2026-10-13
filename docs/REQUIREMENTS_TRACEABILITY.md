@@ -1,5 +1,19 @@
 # 需求条款对照表
 
+## 0.3.3 反馈修订（以本节及 STATE 为当前状态）
+
+| 条款 | 状态 | 实现文件与验证边界 |
+| --- | --- | --- |
+| 三.2 普通页面不可滚动 | 已知偏离 | 用户要求允许滚动；MainScreen 整页滚动；远程画面不滚动 |
+| 三.4 小屏/横屏/IME | 已实现 | MainScreen 外层单一滚动、取消 weight；已编译，手机显示待复测 |
+| 四.3 保存不等于在线/五.3 持久化 | 已实现 | SecretStore.putAll、SessionCoordinator、AppState；服务器 ACK 单独表示 |
+| 五.9–12 随机刷新与模式保持 | 已实现 | SessionCoordinator：读取持久模式，随机 ACK 后才启动计时器，失败不回退 |
+| 七.5 前台服务与采集顺序 | 已实现 | StandbyService/ScreenShareService 在进入前台后分别注册/采集 |
+| 九.6/十五.6 截止与有限重连 | 部分实现 | SessionCoordinator 建连/确认/媒体超时、generation；完整媒体分级重建仍有缺口 |
+| 二.5 原生媒体协商 | 已实现 | SessionMedia 的 onCreateSuccess/onSetSuccess 和 ICE 队列；已编译待双机 |
+| 一.9–10 先分析再修复 | 已实现 | BUG_FIX_0.3.3 区分已确认缺陷和缺少手机证据的推测 |
+| 十六.4 本地 APK | 已实现 | 本地 0.3.3 命名 APK；服务器只更新后端，未上传 APK |
+
 状态仅使用：已实现、部分实现、未实现、已知偏离。Android、Go 与部署配置已构建验证，但所有手机功能仍未实机验证；2026-10-13 的最终状态以 `STATE.md` 为准。
 
 ## 零、总原则（1–4）

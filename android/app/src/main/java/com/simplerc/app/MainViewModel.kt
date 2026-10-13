@@ -52,7 +52,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             app,
             Intent(app, StandbyService::class.java).setAction(StandbyService.ACTION_START),
         )
-        sessions.startControlled()
         return true
     }
 

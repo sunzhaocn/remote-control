@@ -1,43 +1,34 @@
 # SimpleRC 当前状态
 
-更新日期：2026-10-13。本地候选版本：0.3.2（versionCode 5，debug）；公网版本仍为 0.3.1。。用户已反馈问题 A–C；本次修复状态为“已编译，待复测”，不标记“我已验证”。
+日期：2026-10-13。本地 Android：0.3.3（versionCode 6，debug）。用户上一轮实际安装 0.3.1 并反馈问题仍在；不标记“我已验证”。
 
-## 已编译
+## 本轮已编译，待用户复测
 
-- Android 单 APK：角色/权限、身份与凭据、WSS 信令、本机确认、MediaProjection 视频、WebRTC、可靠 DataChannel、触控与系统导航、坐标与方向、有限重连、TURN、路径显示。
-- 内部音频：固定 GetStream WebRTC 1.3.10 提交的最小 AudioRecord 工厂补丁；AudioPlaybackCapture 使用屏幕采集创建的同一 MediaProjection；音频许可拒绝不阻断视频；控制端本地立即静音，被控端通过 `RtpSender.setTrack(null,false)` 脱离轨道并释放 AudioSource/AudioTrack，ACK 后显示停止发送；恢复时重建并重新挂接轨道。
-- Go 后端和公网部署：PostgreSQL、Redis、Coturn、Nginx HTTPS/WSS、短期 TURN 凭据、APK 下载及证书续期。
+- 整个普通页面滚动：顶部/表单/页尾共用滚动容器；远程画面独立、不滚动；顶部显示实际版本。
+- 本机保存自定义 ID/code/mode 一次加密持久化；未启用时不注册上线；网络注册失败保留自定义值和模式；随机计时器不会回退恢复。
+- 在线注册：只有匹配当前发布 ID 的 ACK 才显示注册成功；超时和具体错误可见；停止取消任务；Socket 旧回调隔离。
+- 媒体建立：设置远端 SDP 后正确创建 Answer；本地 SDP 设置完成再发送；ICE 等待远端描述。
+- 服务顺序：待机进入前台后才注册，共享进入前台后才采集；授权 Intent 单次消费；过期授权结果不启动采集。
+- 服务端：Ping 和有效消息续期、连接归属清理已编译并部署；正常 TLS 健康检查 204，未实机验证。服务器旧 APK 校验值保持不变。
 
-## 构建与产物
+## 构建产物
 
-- 补丁 AAR：`android/app/libs/stream-webrtc-android-simplerc-1.3.10.aar`，SHA-256 `8f218e65c7cde1faa4d6bfbb06e79eae3b0134921c65cf376034459acf7da337`。
-- 补丁 AAR 首次 WSL2 构建耗时 7 分 49 秒；实际占用：源码 258 MiB、Gradle 缓存 2.9 GiB、Android SDK 754 MiB。
-- `:app:assembleDebug` 成功；APK SHA-256 `9ee002bf6d85c1299411fcb0b5dfd0ccc885a284b3d94ef21d0c64d990364e5c`。
-- `go build ./...`、`go vet ./...`、`docker compose config` 在上一交付已成功，本轮后端未改动。
+- Android assembleDebug 成功：android/app/build/outputs/apk/debug/SimpleRC-0.3.3-debug.apk。
+- APK 大小：71822936 字节。SHA-256：219f6661225797bb3120f8ee6fe5ff8e392cca6117c0c26d76f3c269053d742d。
+- 后端 Linux amd64 SHA-256：8d107fdbbb2c7734462e1806072463eb609375c2668a6f8cdbde185dd6cf45b0。
+- WebRTC AAR 未改变，SHA-256：8f218e65c7cde1faa4d6bfbb06e79eae3b0134921c65cf376034459acf7da337。
+- 没有运行自动测试、模拟器、ADB、安装或操作手机。编译不等于功能验证。
 
-## 未完成与限制
+## 部署边界
 
-- 全部手机行为待用户双机验收；没有运行自动测试、模拟器、ADB、安装或手机操作。
-- 部分应用因 DRM、`FLAG_SECURE`、播放捕获策略或非允许 usage 不提供可捕获音频，这是 Android 平台限制。
-- 静音真实停包需在双机验收中以 WebRTC outbound-rtp `bytesSent` 增量停止确认；本轮仅完成代码和编译验证。
-- H.264 明确排序、动态质量策略、完整质量统计、PeerConnection 失败后的完整重建、媒体停滞检测、DataChannel 执行成功回执、Android 14 单应用共享范围拒绝仍未完整实现。
-- P2 功能未做：60fps、几何诊断层、本地输入后发送文字、高级统计。
+- 用户本轮允许更新后端，但不得上传 Android APK。本地 0.3.3 不能从服务器下载。
+- 服务器 APK 保留 0.3.1；请安装上方本地命名产物，避免误装旧版。
+- 现有公网 HTTPS/WSS 9443；TURN 3480 UDP/TCP、5350 TLS。
 
-## 部署
+## 未完成项与不确定性
 
-- 公网入口：`https://49.233.43.167:9443/simplerc/`；TURN 3480 UDP/TCP、5350 TLS。
-- APK 下载：`https://49.233.43.167:9443/simplerc-download/SimpleRC-0.3.1-debug.apk`。
-
-## 0.3.1 已编译，待复测
-
-- 问题 A：自定义模式不再启动或恢复随机刷新；冷启动保留模式；切回随机时服务端释放固定注册。
-- 问题 B：正常注册/心跳/重连不参与验证失败限流；超限按服务端秒数倒计时；所有注册等待有 20 秒超时，重连有 120 秒截止；错误界面有重试与停止。
-- 问题 C：ID 6–16 与验证码 12–32 的配置化规则已同时应用到客户端和服务端；输入实时提示、不截断，并可切换显示完整验证码。
-- 上述修复已完成 Android 与 Go 构建验证，均等待原双机环境复测。
-
-## 0.3.2 本地候选版本（待复测，未部署）
-
-- 普通控制端连接表单和被控端设置表单允许上下滚动，避免小屏、字体放大或校验提示占用空间时底部控件被挤出。
-- 远程画面仍使用独立全屏手势区域，不加入滚动容器，远程滑动不会被页面滚动截获。
-- :app:assembleDebug 已成功；APK SHA-256 `1904327ce8f6e0a0e28a2e9040ad32f297f13f3ff861393a558f8dc96bee6051`，大小 71673594 字节。
-- 按用户要求，本版本未上传服务器；公网仍为 0.3.1。
+- 本轮手机失败的具体阶段、错误码和输入渲染证据尚未提供。确切静态缺陷和推测见 BUG_FIX_0.3.3.md。
+- ID 唯一性只在实际启用注册时确认。本机保存不代表已占用或上线；切回随机模式的服务端固定 ID 释放需要在线注册。
+- 部分音源因平台/DRM/应用捕获策略无法捕获；内部音频和真实静音停包尚待双机复测。
+- H.264 明确排序、动态质量、完整质量统计、完整 PeerConnection 重建、媒体停滞检测、远端执行回执、单应用共享范围拒绝仍未完整实现。
+- P2 功能未授权、未实施。
