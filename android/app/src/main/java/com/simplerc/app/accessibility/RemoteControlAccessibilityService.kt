@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 
 class RemoteControlAccessibilityService : AccessibilityService() {
+    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
+    override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit
@@ -28,5 +30,7 @@ class RemoteControlAccessibilityService : AccessibilityService() {
         com.simplerc.app.control.ControlKind.RECENTS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
         else -> false
     }
+
+    companion object { @Volatile var instance: RemoteControlAccessibilityService? = null; private set }
 }
 

@@ -16,20 +16,18 @@
 - 影响：`gradlew.bat :app:assembleDebug` 在 Wrapper 启动前终止，尚未产生 APK，也无法确认源码编译结果。
 - 处理结果：已安装 JDK 17、Android SDK Platform 36 和兼容 Build Tools，`:app:assembleDebug` 成功并生成 debug APK。未连接手机。
 
-## GAP-002 端到端远控链路未完成
+## GAP-002 端到端远控链路未完成（代码接线已解决）
 
-- 状态：未完成
-- 影响：当前不能真实注册配对、建立 SDP/ICE、显示远端视频或通过 DataChannel 控制手机。
-- 缺口：后端业务路由、Android 仓库/UI接线、ScreenCapturerAndroid、轨道/渲染、会话确认和回执。
+- 状态：已完成代码接线并编译，待双机验证。
+- 结果：设备注册、配对、确认、SDP/ICE、视频渲染、DataChannel 与无障碍控制已接通；仍缺远端手势执行成功回执。
 
 ## GAP-003 WebRTC 音频补丁未形成可应用构建
 
-- 状态：等待另行构建授权和固定上游修订
+- 状态：用户已授权，但本机需重启后完成 WSL2 Ubuntu 初始化
 - 影响：内部音频运行时不可用。
 - 事实：补丁目录目前包含变更规范，不是绑定具体上游 SHA 的最终行级 diff；没有 AAR 和 SHA-256。
 
-## GAP-004 后端与部署配置未验证（已解决构建部分）
+## GAP-004 后端与部署配置未验证（已解决）
 
-- 状态：Go 与 Compose 已校验，基础容器已部署；公网服务仍未完成
-- 结果：`go build ./...`、`go vet ./...`、`docker compose config` 成功；服务器端 PostgreSQL、Redis、server 健康。
-- 剩余：设备注册/配对/WebSocket 路由未完成；没有域名和 TLS，Coturn 未启用。
+- 状态：已解决构建与公网部署。
+- 结果：Go/Compose 校验成功；HTTPS/WSS、数据库、Redis、Coturn、APK 下载和证书续期均已部署。功能仍待双机验证。

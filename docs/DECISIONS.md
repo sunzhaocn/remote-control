@@ -175,3 +175,15 @@ Redis 使用 `SET NX PX` 原子占用，以目标 ID 为键、随机会话 ID �
 ### D-030 后端容器制品
 
 服务器访问 Go 模块代理超时，部署时在已完成 `go build`/`go vet` 的本机交叉编译静态 Linux amd64 二进制，再由 `scratch` 镜像封装。二进制目录不纳入 Git；源码依赖由 `go.mod` 和 `go.sum` 固定。
+
+### D-031 公网入口与 TURN 端口
+
+9443 提供 `/simplerc/` HTTPS/WSS 与 `/simplerc-download/` APK 下载。Coturn 使用 3480 UDP/TCP、5350 TLS 和 49261–49360 relay 范围。
+
+### D-032 选中路径显示
+
+使用 `onSelectedCandidatePairChanged` 判断 relay 与协议；其他候选显示“P2P（局域网未确认）”，不把 host 候选直接声称为 LAN。
+
+### D-033 WebRTC 构建环境阻塞
+
+用户已授权源码构建。本机已安装 WSL 并启用所需 Windows 功能，但系统要求重启后才能初始化 Ubuntu。音频保持未实现，Manifest 不声明音频权限。

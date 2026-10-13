@@ -32,7 +32,7 @@ AGP 8.10 官方兼容信息要求 Gradle 8.11.1、JDK 17，并支持最高 API 3
 
 ## 当前环境结果
 
-2026-10-12 已安装 JDK 17、Android SDK Platform 36 和 Build Tools，并成功执行 `:app:assembleDebug`。产物为 `android/app/build/outputs/apk/debug/app-debug.apk`，版本 `0.1.0`、debug 变体。该结果只代表构建验证。
+2026-10-13 已成功执行 `:app:assembleDebug`。产物为 `android/app/build/outputs/apk/debug/app-debug.apk`，版本 `0.2.0`、versionCode 2、debug 变体，SHA-256 为 `0bd49322b889fe4c4aae8791f9c2fbda66a6b2e5551e254ccc22256fcfa917a3`。该结果只代表构建验证。
 
 当前桌面运行环境需把 `TEMP`、`TMP`、`java.io.tmpdir` 和 `jdk.net.unixdomain.tmpdir` 指向短的 Windows 本地路径（本次使用 `C:\Temp\codex-java`），否则 Java NIO 可能无法建立 Gradle 所需的本地套接字。项目中文路径通过 `android.overridePathCheck=true` 显式允许。
 
@@ -40,7 +40,6 @@ AGP 8.10 官方兼容信息要求 Gradle 8.11.1、JDK 17，并支持最高 API 3
 
 ## WebRTC 音频补丁边界
 
-阶段 1–4 从 Maven Central 使用标准预编译 AAR。进入阶段 5 前才会固定补丁基线并重新确认 Linux/WSL2 构建方案；未经用户单独授权，不下载 WebRTC 源码、不执行其构建。
+阶段 1–4 从 Maven Central 使用标准预编译 AAR。用户已授权 WebRTC 源码构建，但 WSL2 安装后系统要求重启，当前尚不能初始化 Ubuntu；因此本轮没有补丁 AAR。重启后按 `webrtc-patch/BUILD_LINUX.md` 继续。
 
 未来的补丁 AAR 不使用付费制品服务。计划保存可复现补丁和构建说明，并在本地 `android/app/libs/` 放置 AAR（该二进制默认被 `.gitignore` 排除）或使用明确免费的发布附件，同时记录 SHA-256。
-

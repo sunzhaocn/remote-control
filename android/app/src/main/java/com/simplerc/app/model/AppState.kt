@@ -13,6 +13,8 @@ enum class AvailabilityState {
     ERROR,
 }
 
+enum class SessionState { IDLE, REGISTERING, STANDBY, WAITING_CONFIRMATION, CONNECTING, CONNECTED, RECONNECTING, STOPPED, ERROR }
+
 data class AppState(
     val role: DeviceRole = DeviceRole.CONTROLLER,
     val availability: AvailabilityState = AvailabilityState.DISABLED,
@@ -21,5 +23,20 @@ data class AppState(
     val standbyServiceRunning: Boolean = false,
     val audioSharingAllowed: Boolean = false,
     val statusDetail: String = "未连接",
+    val sessionState: SessionState = SessionState.IDLE,
+    val localId: String = "",
+    val localCode: String = "",
+    val fixedCredentialMode: Boolean = false,
+    val credentialExpiresAt: Long? = null,
+    val incomingSessionId: String? = null,
+    val activeSessionId: String? = null,
+    val remoteVideoAvailable: Boolean = false,
+    val controlEnabled: Boolean = false,
+    val connectionPath: String = "未知",
+    val remoteRotation: Int? = null,
+    val remoteCaptureWidth: Int = 0,
+    val remoteCaptureHeight: Int = 0,
+    val audioStatus: String = "内部音频不可用（未接入补丁构建）",
+    val errorMessage: String? = null,
 )
 

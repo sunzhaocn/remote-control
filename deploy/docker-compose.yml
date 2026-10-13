@@ -8,6 +8,8 @@ services:
       DATABASE_URL: postgres://simplerc:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/simplerc?sslmode=disable
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379/0
       CREDENTIAL_PEPPER: ${CREDENTIAL_PEPPER:?set CREDENTIAL_PEPPER}
+      TURN_REALM: ${TURN_REALM:-49.233.43.167}
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:?set TURN_SHARED_SECRET}
     ports: ["127.0.0.1:18080:8080"]
     depends_on:
       postgres:
@@ -44,8 +46,8 @@ services:
     restart: unless-stopped
     profiles: ["turn"]
     network_mode: host
-    command: ["-c", "/etc/coturn/turnserver.conf"]
-    volumes: ["./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro", "./certs:/etc/coturn/certs:ro"]
+    command: ["-c", "/etc/coturn/turnserver.conf", "--static-auth-secret=${TURN_SHARED_SECRET:?set TURN_SHARED_SECRET}", "--realm=${TURN_REALM:-49.233.43.167}"]
+    volumes: ["./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro", "${TURN_CERT_DIR:-./certs}:/etc/coturn/certs:ro"]
 volumes:
   postgres-data:
   redis-data:

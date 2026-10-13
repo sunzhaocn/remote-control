@@ -12,6 +12,8 @@ object AppStateStore {
     private val mutableState = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = mutableState.asStateFlow()
 
+    fun update(transform: (AppState) -> AppState) = mutableState.update(transform)
+
     fun selectRole(role: DeviceRole) {
         mutableState.update { current ->
             if (current.role == role) current
@@ -52,7 +54,7 @@ object AppStateStore {
                 role = DeviceRole.CONTROLLED,
                 standbyServiceRunning = true,
                 availability = AvailabilityState.STANDBY_SERVICE_RUNNING,
-                statusDetail = "待机服务运行中（信令将在阶段 2 接入）",
+                statusDetail = "正在注册信令服务",
             )
         }
     }
@@ -63,6 +65,13 @@ object AppStateStore {
                 standbyServiceRunning = false,
                 availability = AvailabilityState.STOPPED,
                 statusDetail = "已停止",
+                sessionState = com.simplerc.app.model.SessionState.STOPPED,
+                localId = "",
+                localCode = "",
+                incomingSessionId = null,
+                activeSessionId = null,
+                controlEnabled = false,
+                remoteVideoAvailable = false,
             )
         }
     }

@@ -17,3 +17,6 @@
 - 2026-10-12：阶段 7 文档交付完成；再次构建仍因缺少 Java 失败，无 APK。全部阶段提交完成，等待统一审查。
 - 2026-10-12：用户授权安装构建工具和服务器部署。Android `:app:assembleDebug` 成功并生成 debug APK；Go `build`/`vet` 与 Compose 配置校验成功。
 - 2026-10-12：服务器已部署 PostgreSQL、Redis 和仅绑定回环地址的后端健康检查基础。因缺少域名/TLS 且业务路由未完成，未公开信令入口、未启用 Coturn。
+- 2026-10-13：完成端到端信令、视频、DataChannel 控制、坐标、确认/租约/重连和短期 TURN 凭据接线；Android 0.2.0、Go 和 Compose 配置构建校验成功。
+- 2026-10-13：服务器已部署 HTTPS/WSS 后端、PostgreSQL、Redis、Coturn、APK 下载与证书续期；按用户指示删除废弃 lightremote 项目。
+- 2026-10-13：内部音频仍因补丁 AAR 不存在而不可用。WSL2 已安装并启用 Windows 功能，但需重启后才能安装 Ubuntu 和执行 WebRTC 源码构建。

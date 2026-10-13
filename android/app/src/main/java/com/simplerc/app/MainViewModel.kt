@@ -14,6 +14,7 @@ import com.simplerc.app.state.AppStateStore
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val state = AppStateStore.state
+    private val sessions get() = (getApplication<Application>() as SimpleRcApplication).sessions
 
     init {
         refreshPermissions()
@@ -24,6 +25,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             stopStandby()
         }
         AppStateStore.selectRole(role)
+        if (role == DeviceRole.CONTROLLED) sessions.loadSavedCredentials()
         refreshPermissions()
     }
 
@@ -50,6 +52,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             app,
             Intent(app, StandbyService::class.java).setAction(StandbyService.ACTION_START),
         )
+        sessions.startControlled()
         return true
     }
 
@@ -58,6 +61,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         app.startService(
             Intent(app, StandbyService::class.java).setAction(StandbyService.ACTION_STOP),
         )
+        sessions.stop()
     }
+
+    fun connect(targetId: String, code: String) = sessions.connectTo(targetId, code)
+    fun disconnect() = sessions.disconnect()
+    fun confirmIncoming(accepted: Boolean) = sessions.confirmIncoming(accepted)
+    fun registerFixed(id: String, code: String) = sessions.registerFixed(id, code)
+    fun useRandomCredentials() = sessions.useRandomCredentials()
 }
 

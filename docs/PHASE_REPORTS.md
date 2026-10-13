@@ -71,3 +71,12 @@
 - 未完成项：端到端远控链路、后端业务路由、WebRTC 音频补丁、域名/TLS、公网 WSS 和 TURN。
 - 新增决策：中文路径显式允许；服务器只部署回环健康基础；服务器无法访问 Go 模块代理时使用本机交叉编译的静态二进制。
 - 已知风险：APK 虽已编译但核心会话仍未接线；服务器部署不能供客户端真实配对；所有设备行为仍待人工双机验收。
+
+## 阶段 2–7 完整化修复与最终部署（2026-10-13）
+
+- 完成内容：补齐设备注册、凭据发布、固定 ID、WebSocket、单控制者租约、本机确认、确认超时、短期 TURN 凭据；接通 MediaProjection、WebRTC 视频、SDP/ICE、DataChannel、无障碍控制、远端渲染、实际内容区域坐标、方向和基础恢复；部署公网 HTTPS/WSS、Coturn 与 APK 下载。
+- 修改范围：`android/app` 会话/UI/服务/状态；`server/internal/api`、配置和入口；`deploy`；状态和审查文档。
+- 构建状态：Android `:app:assembleDebug` 成功；Go build/vet 成功；Compose config 成功；公网健康 204。未运行测试，未接触手机。
+- 未完成项：AudioPlaybackCapture 补丁 AAR、真实停传音频、H.264 优先/动态质量、完整统计、媒体停滞检测、DataChannel 执行回执、Android 14 单应用范围拒绝。
+- 新增决策：TURN 使用 3480 UDP/TCP 和 5350 TLS；连接路径从选中候选对事件生成；废弃 lightremote 项目按用户指示删除，证书续期迁入 SimpleRC。
+- 已知风险：全部 Android 行为均未双机验证；WebRTC 音频构建仍受重启后 WSL2 初始化阻塞。

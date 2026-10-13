@@ -1,7 +1,8 @@
 package com.simplerc.app.config
 
 object AppConfig {
-    const val SIGNALING_BASE_URL = "https://example.invalid"
+    const val SIGNALING_BASE_URL = "https://49.233.43.167:9443/simplerc"
+    const val SIGNALING_WS_URL = "wss://49.233.43.167:9443/simplerc/v1/ws"
     const val RANDOM_CREDENTIAL_REFRESH_SECONDS = 300L
     const val RANDOM_CODE_DIGITS = 8
     const val CUSTOM_CODE_MIN_LENGTH = 12

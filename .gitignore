@@ -3,6 +3,7 @@
 **/build/
 local.properties
 *.jks
+服务器上传信息.md
 *.keystore
 *.pem
 *.key

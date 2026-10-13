@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,10 +43,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simplerc.app.MainViewModel
 import com.simplerc.app.model.AppState
 import com.simplerc.app.model.DeviceRole
+import com.simplerc.app.model.SessionState
+import com.simplerc.app.session.SessionMedia
+import com.simplerc.app.geometry.RectPx
+import org.webrtc.SurfaceViewRenderer
 
 private val Brand = Color(0xFF176B5B)
 private val Background = Color(0xFFF4F7F5)
@@ -56,6 +66,7 @@ fun SimpleRcApp(
     openAppDetails: () -> Unit,
     requestNotificationPermission: () -> Unit,
     openBatterySettings: () -> Unit,
+    requestScreenCapture: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showPermissionGuide by remember { mutableStateOf(false) }
@@ -78,13 +89,15 @@ fun SimpleRcApp(
                     RoleSelector(state.role, viewModel::selectRole)
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         if (state.role == DeviceRole.CONTROLLER) {
-                            ControllerPanel(compactHeight)
+                            ControllerPanel(state, viewModel, compactHeight)
                         } else {
                             ControlledPanel(
                                 state = state,
                                 compact = compactHeight,
                                 onPermissionGuide = { showPermissionGuide = true },
                                 onAudioChanged = viewModel::setAudioSharingAllowed,
+                                onRegisterFixed = viewModel::registerFixed,
+                                onUseRandom = viewModel::useRandomCredentials,
                                 onStart = {
                                     if (!viewModel.startStandby()) showPermissionGuide = true
                                 },
@@ -95,7 +108,7 @@ fun SimpleRcApp(
                         }
                     }
                     Text(
-                        text = "首版每次共享都需要被控手机确认；阶段 1 不会建立远程连接。",
+                        text = "每次共享都需要被控手机本机确认并授予系统录屏权限。",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF52645F),
                         modifier = Modifier.fillMaxWidth(),
@@ -111,6 +124,15 @@ fun SimpleRcApp(
             onDismiss = { showPermissionGuide = false },
             openAppDetails = openAppDetails,
             openAccessibilitySettings = openAccessibilitySettings,
+        )
+    }
+    if (state.sessionState == SessionState.WAITING_CONFIRMATION) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("允许远程控制？") },
+            text = { Text("确认后系统还会显示屏幕共享授权。共享期间通知和应用内均可立即停止。") },
+            confirmButton = { Button(onClick = requestScreenCapture) { Text("确认并选择共享范围") } },
+            dismissButton = { TextButton(onClick = { viewModel.confirmIncoming(false) }) { Text("拒绝") } },
         )
     }
 }
@@ -162,10 +184,11 @@ private fun RoleButton(label: String, selected: Boolean, modifier: Modifier, onC
 }
 
 @Composable
-private fun ControllerPanel(compact: Boolean) {
+private fun ControllerPanel(state: AppState, viewModel: MainViewModel, compact: Boolean) {
     var targetId by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var showCode by remember { mutableStateOf(false) }
+    if (state.remoteVideoAvailable) { RemotePanel(state, viewModel); return }
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(if (compact) 12.dp else 18.dp),
@@ -193,10 +216,11 @@ private fun ControllerPanel(compact: Boolean) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                Text("连接（阶段 2 开放）")
+            Button(onClick = { viewModel.connect(targetId, code) }, enabled = state.sessionState !in listOf(SessionState.CONNECTING, SessionState.RECONNECTING), modifier = Modifier.fillMaxWidth()) {
+                Text(if (state.sessionState == SessionState.CONNECTING) "连接中" else "连接")
             }
-            Text("状态：未连接", style = MaterialTheme.typography.bodySmall)
+            if (state.sessionState != SessionState.IDLE) OutlinedButton(onClick = viewModel::disconnect, modifier = Modifier.fillMaxWidth()) { Text("取消 / 断开") }
+            Text("状态：${state.statusDetail}", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -207,20 +231,36 @@ private fun ControlledPanel(
     compact: Boolean,
     onPermissionGuide: () -> Unit,
     onAudioChanged: (Boolean) -> Unit,
+    onRegisterFixed: (String, String) -> Unit,
+    onUseRandom: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
     requestNotificationPermission: () -> Unit,
     openBatterySettings: () -> Unit,
 ) {
+    var fixedId by remember(state.fixedCredentialMode) { mutableStateOf(if (state.fixedCredentialMode) state.localId else "") }
+    var fixedCode by remember(state.fixedCredentialMode) { mutableStateOf(if (state.fixedCredentialMode) state.localCode else "") }
+    var showLocalCode by remember { mutableStateOf(false) }
     Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(if (compact) 12.dp else 18.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
         ) {
             Text("允许这台设备被控制", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            InfoLine("模式", "随机凭据（阶段 2 生成）")
-            InfoLine("本机 ID", "尚未生成")
-            InfoLine("验证码", "••••••••")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!state.fixedCredentialMode) Button(onClick = onUseRandom, modifier = Modifier.weight(1f)) { Text("随机凭据") }
+                else OutlinedButton(onClick = onUseRandom, modifier = Modifier.weight(1f)) { Text("随机凭据") }
+                if (state.fixedCredentialMode) Button(onClick = { }, modifier = Modifier.weight(1f)) { Text("自定义") }
+                else OutlinedButton(onClick = { onRegisterFixed(fixedId, fixedCode) }, enabled = fixedId.isNotBlank() && fixedCode.length >= 12, modifier = Modifier.weight(1f)) { Text("保存自定义") }
+            }
+            OutlinedTextField(value = fixedId, onValueChange = { fixedId = it }, label = { Text("自定义 ID") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = fixedCode, onValueChange = { fixedCode = it }, label = { Text("自定义验证码（至少 12 位）") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            InfoLine("本机 ID", state.localId.ifBlank { "启用后生成" })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("验证码", color = Color(0xFF52645F), modifier = Modifier.width(86.dp))
+                Text(if (state.localCode.isBlank() || !showLocalCode) "••••••••" else state.localCode, modifier = Modifier.weight(1f))
+                TextButton(onClick = { showLocalCode = !showLocalCode }) { Text(if (showLocalCode) "隐藏" else "显示") }
+            }
             PermissionRow(
                 enabled = state.accessibilityEnabled,
                 onPermissionGuide = onPermissionGuide,
@@ -228,7 +268,7 @@ private fun ControlledPanel(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("允许共享内部声音")
-                    Text("阶段 5 接入；不会使用麦克风", style = MaterialTheme.typography.bodySmall)
+                    Text(state.audioStatus, style = MaterialTheme.typography.bodySmall)
                 }
                 Switch(checked = state.audioSharingAllowed, onCheckedChange = onAudioChanged)
             }
@@ -245,13 +285,47 @@ private fun ControlledPanel(
             }
             if (state.standbyServiceRunning) {
                 Text(
-                    "待机服务保持运行，但阶段 2 前尚未注册服务器，不能接受连接。",
+                    state.statusDetail,
                     style = MaterialTheme.typography.bodySmall,
                     color = Brand,
                 )
             }
             TextButton(onClick = openBatterySettings, modifier = Modifier.fillMaxWidth()) { Text("后台运行设置说明") }
             Text("部分厂商需手动允许后台运行、自启动或锁定最近任务；系统仍可能停止服务。", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun RemotePanel(state: AppState, viewModel: MainViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val media = remember { SessionMedia.instance(context.applicationContext as android.app.Application) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val dragPoints = remember { mutableListOf<Pair<Float, Float>>() }
+    fun contentRect(): RectPx {
+        if (size.width <= 0 || size.height <= 0 || state.remoteCaptureWidth <= 0 || state.remoteCaptureHeight <= 0) return RectPx(0f, 0f, 0f, 0f)
+        val viewRatio = size.width.toFloat() / size.height
+        val videoRatio = state.remoteCaptureWidth.toFloat() / state.remoteCaptureHeight
+        return if (videoRatio > viewRatio) {
+            val height = size.width / videoRatio
+            RectPx(0f, (size.height - height) / 2f, size.width.toFloat(), height)
+        } else {
+            val width = size.height * videoRatio
+            RectPx((size.width - width) / 2f, 0f, width, size.height.toFloat())
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black).onSizeChanged { size = it }
+        .pointerInput(state.controlEnabled, size) {
+            detectTapGestures(onTap = { p -> if (state.controlEnabled) media.sendTap(p.x, p.y, contentRect()) }, onLongPress = { p -> if (state.controlEnabled) media.sendGesture(listOf(p.x to p.y), contentRect()) })
+        }.pointerInput(state.controlEnabled, size) {
+            detectDragGestures(onDragStart = { dragPoints.clear(); dragPoints += it.x to it.y }, onDragEnd = { if (state.controlEnabled && dragPoints.size >= 2) media.sendGesture(dragPoints.toList(), contentRect()); dragPoints.clear() }, onDragCancel = { dragPoints.clear() }) { change, _ -> if (dragPoints.size < 256) dragPoints += change.position.x to change.position.y; change.consume() }
+        }) {
+        AndroidView(factory = { SurfaceViewRenderer(it).also(media::attachRenderer) }, modifier = Modifier.fillMaxSize())
+        FloatingNavigation(enabled = state.controlEnabled, onCommand = { media.sendNavigation(it.name) }, modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp))
+        Column(modifier = Modifier.align(Alignment.TopStart).padding(8.dp).background(Color(0x99000000), RoundedCornerShape(8.dp)).padding(8.dp)) {
+            Text(state.statusDetail, color = Color.White)
+            Text("路径：${state.connectionPath}  声音：${state.audioStatus}", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            TextButton(onClick = viewModel::disconnect) { Text("断开", color = Color.White) }
         }
     }
 }

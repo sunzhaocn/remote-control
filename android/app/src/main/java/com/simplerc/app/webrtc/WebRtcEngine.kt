@@ -5,6 +5,7 @@ import org.webrtc.*
 
 class WebRtcEngine(context: Context) : AutoCloseable {
     private val egl = EglBase.create()
+    val eglContext: EglBase.Context get() = egl.eglBaseContext
     val factory: PeerConnectionFactory
     init {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions())
