@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -49,7 +50,9 @@ type client struct {
 }
 type session struct {
 	id, targetID, controllerID, controlledID string
+	videoPolicy                              string
 	confirmed                                bool
+	controllerSeen, controlledSeen           time.Time
 }
 type registerRequest struct {
 	PublicKey string `json:"publicKey"`
@@ -62,8 +65,9 @@ type pairingPayload struct {
 	ExpiresAt int64  `json:"expiresAtEpochSeconds,omitempty"`
 }
 type connectPayload struct {
-	TargetID string `json:"targetId"`
-	Code     string `json:"code"`
+	TargetID    string `json:"targetId"`
+	Code        string `json:"code"`
+	VideoPolicy string `json:"videoPolicy"`
 }
 type confirmPayload struct {
 	Accepted bool `json:"accepted"`
@@ -157,13 +161,15 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 		if conn.ReadJSON(&env) != nil {
 			return
 		}
-		if !env.Valid(c.lastSeq) {
-			s.sendError(c, env.SessionID, "STALE_OR_INVALID")
+		if reason := env.RejectionReason(c.lastSeq); reason != "" {
+			log.Printf("signal_rejected type=%s code=STALE_OR_INVALID reason=%s sequence=%d previous=%d age_ms=%d", safeType(env.Type), reason, env.Sequence, c.lastSeq, time.Now().UnixMilli()-env.SentAt)
+			_ = s.send(c, "ERROR", env.SessionID, map[string]any{"code": "STALE_OR_INVALID", "reason": reason, "requestType": safeType(env.Type), "requestSequence": env.Sequence})
 			continue
 		}
 		c.lastSeq = env.Sequence
 		_ = conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 		if err := s.handle(c, env, r); err != nil {
+			log.Printf("signal_rejected type=%s code=%s sequence=%d", safeType(env.Type), err.Error(), env.Sequence)
 			if limited, ok := err.(rateLimitError); ok {
 				s.sendErrorWithRetry(c, env.SessionID, limited.seconds)
 			} else {
@@ -240,33 +246,42 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 			return errors.New("AUTH_FAILED")
 		}
 		start := time.Now()
+		if p.VideoPolicy == "" {
+			p.VideoPolicy = "tuned"
+		}
+		if p.VideoPolicy != "tuned" && p.VideoPolicy != "default" {
+			return errors.New("INVALID_REQUEST")
+		}
+		validationFailure := func() error {
+			retry := s.recordValidationFailure(r.Context(), r, c.deviceID, p.TargetID)
+			uniformFailureDelay(start)
+			if retry > 0 {
+				return rateLimitError{retry}
+			}
+			return errors.New("AUTH_FAILED")
+		}
 		ok := s.verifyPairing(r.Context(), p.TargetID, p.Code)
 		s.mu.RLock()
 		controlledID := s.pairings[p.TargetID]
 		controlled := s.clients[controlledID]
 		s.mu.RUnlock()
 		if !ok {
-			if retry := s.recordValidationFailure(r.Context(), r, c.deviceID, p.TargetID); retry > 0 {
-				uniformFailureDelay(start)
-				return rateLimitError{retry}
-			}
-			uniformFailureDelay(start)
-			return errors.New("AUTH_FAILED")
+			return validationFailure()
 		}
 		if controlled == nil || controlledID == c.deviceID {
-			uniformFailureDelay(start)
-			return errors.New("AUTH_FAILED")
+			return validationFailure()
 		}
 		sessionID := randomID(c.deviceID + p.TargetID + time.Now().String())
 		acquired, err := s.leases.Acquire(r.Context(), p.TargetID, sessionID)
 		if err != nil || !acquired {
-			uniformFailureDelay(start)
-			return errors.New("AUTH_FAILED")
+			return validationFailure()
 		}
-		sess := &session{id: sessionID, targetID: p.TargetID, controllerID: c.deviceID, controlledID: controlledID}
+		now := time.Now()
+		sess := &session{id: sessionID, targetID: p.TargetID, controllerID: c.deviceID, controlledID: controlledID, controllerSeen: now, controlledSeen: now, videoPolicy: p.VideoPolicy}
 		s.mu.Lock()
 		s.sessions[sessionID] = sess
 		s.mu.Unlock()
+		go s.watchSession(sess)
 		time.AfterFunc(s.cfg.ConfirmationTimeout, func() {
 			s.mu.RLock()
 			current := s.sessions[sessionID]
@@ -294,22 +309,36 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 			s.endSession(r.Context(), sess)
 			return s.send(peer, "REJECTED", sess.id, map[string]any{})
 		}
+		if ok, err := s.leases.Renew(r.Context(), sess.targetID, sess.id); err != nil || !ok {
+			s.revokeSession(sess, "LEASE_LOST")
+			return errors.New("LEASE_LOST")
+		}
 		s.mu.Lock()
-		if current := s.sessions[sess.id]; current != nil {
+		if current := s.sessions[sess.id]; current == sess {
 			current.confirmed = true
+			current.controllerSeen = time.Now()
+			current.controlledSeen = time.Now()
+		} else {
+			s.mu.Unlock()
+			return errors.New("SESSION_INVALID")
 		}
 		s.mu.Unlock()
 		payload := s.turnCredentials(c.deviceID)
+		payload["videoPolicy"] = sess.videoPolicy
 		if err := s.send(peer, "CONFIRMED", sess.id, payload); err != nil {
 			return err
 		}
 		return s.send(c, "CONFIRMED", sess.id, payload)
-	case "OFFER", "ANSWER", "ICE", "GEOMETRY", "CONTROL_ACK", "AUDIO_STATE":
+	case "OFFER", "ANSWER", "ICE", "GEOMETRY", "CONTROL_ACK", "AUDIO_STATE", "ICE_RESTART", "CONTROL_OFFER", "CONTROL_ANSWER", "CONTROL_ICE", "CONTROL_RESTART":
 		_, peer := s.sessionPeer(env.SessionID, c.deviceID)
 		if peer == nil {
 			return errors.New("SESSION_INVALID")
 		}
-		return peer.sendRaw(env)
+		err := peer.sendRaw(env)
+		if env.Type == "OFFER" || env.Type == "ANSWER" || env.Type == "GEOMETRY" {
+			log.Printf("signal_relay type=%s sequence=%d ok=%t", env.Type, env.Sequence, err == nil)
+		}
+		return err
 	case "HEARTBEAT", "LEASE_RENEW":
 		sess, _ := s.sessionPeer(env.SessionID, c.deviceID)
 		if sess == nil {
@@ -317,13 +346,23 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 		}
 		ok, err := s.leases.Renew(r.Context(), sess.targetID, sess.id)
 		if err != nil || !ok {
+			s.revokeSession(sess, "LEASE_LOST")
 			return errors.New("LEASE_LOST")
 		}
+		s.mu.Lock()
+		if current := s.sessions[sess.id]; current == sess {
+			if c.deviceID == sess.controllerID {
+				current.controllerSeen = time.Now()
+			} else {
+				current.controlledSeen = time.Now()
+			}
+		}
+		s.mu.Unlock()
 		return s.send(c, "HEARTBEAT_ACK", sess.id, map[string]any{})
 	case "REVOKE":
 		sess, peer := s.sessionPeer(env.SessionID, c.deviceID)
 		if sess == nil {
-			return errors.New("SESSION_INVALID")
+			return nil // Revocation is idempotent, including simultaneous local stops.
 		}
 		_ = s.send(peer, "REVOKED", sess.id, map[string]any{})
 		s.endSession(r.Context(), sess)
@@ -358,14 +397,64 @@ func (s *Server) sessionPeer(id, deviceID string) (*session, *client) {
 	return sess, s.clients[peerID]
 }
 func (s *Server) endSession(ctx context.Context, sess *session) {
-	_ = s.leases.Release(ctx, sess.targetID, sess.id)
 	s.mu.Lock()
+	if s.sessions[sess.id] != sess {
+		s.mu.Unlock()
+		return
+	}
 	delete(s.sessions, sess.id)
 	s.mu.Unlock()
+	_ = s.leases.Release(ctx, sess.targetID, sess.id)
+}
+func (s *Server) revokeSession(sess *session, reason string) {
+	s.mu.RLock()
+	current := s.sessions[sess.id]
+	controller, controlled := s.clients[sess.controllerID], s.clients[sess.controlledID]
+	s.mu.RUnlock()
+	if current != sess {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s.endSession(ctx, sess)
+	_ = s.send(controller, "REVOKED", sess.id, map[string]any{"reason": reason})
+	_ = s.send(controlled, "REVOKED", sess.id, map[string]any{"reason": reason})
+}
+func (s *Server) watchSession(sess *session) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	lastRenew := time.Now()
+	for now := range ticker.C {
+		s.mu.RLock()
+		current := s.sessions[sess.id]
+		confirmed := sess.confirmed
+		controllerSeen, controlledSeen := sess.controllerSeen, sess.controlledSeen
+		s.mu.RUnlock()
+		if current != sess {
+			return
+		}
+		if confirmed {
+			if now.Sub(controllerSeen) > s.cfg.LeaseRenew+s.cfg.ReconnectGrace || now.Sub(controlledSeen) > s.cfg.LeaseRenew+s.cfg.ReconnectGrace {
+				s.revokeSession(sess, "RECONNECT_TIMEOUT")
+				return
+			}
+		} else if now.Sub(lastRenew) >= s.cfg.LeaseRenew {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ok, err := s.leases.Renew(ctx, sess.targetID, sess.id)
+			cancel()
+			if err != nil || !ok {
+				s.revokeSession(sess, "LEASE_LOST")
+				return
+			}
+			lastRenew = now
+		}
+	}
 }
 func (s *Server) removeClient(c *client) {
 	s.mu.Lock()
+	removed := false
 	if s.clients[c.deviceID] == c {
+		removed = true
 		delete(s.clients, c.deviceID)
 		for id, d := range s.pairings {
 			if d == c.deviceID {
@@ -375,6 +464,26 @@ func (s *Server) removeClient(c *client) {
 	}
 	s.mu.Unlock()
 	_ = c.conn.Close()
+	if !removed {
+		return
+	}
+	time.AfterFunc(s.cfg.ReconnectGrace, func() {
+		s.mu.RLock()
+		if s.clients[c.deviceID] != nil {
+			s.mu.RUnlock()
+			return
+		}
+		var expired []*session
+		for _, sess := range s.sessions {
+			if sess.controllerID == c.deviceID || sess.controlledID == c.deviceID {
+				expired = append(expired, sess)
+			}
+		}
+		s.mu.RUnlock()
+		for _, sess := range expired {
+			s.revokeSession(sess, "RECONNECT_TIMEOUT")
+		}
+	})
 }
 func (s *Server) send(c *client, typ, sessionID string, payload any) error {
 	if c == nil {
@@ -391,6 +500,14 @@ func (c *client) sendRaw(env protocol.Envelope) error {
 }
 func (s *Server) sendError(c *client, sessionID, code string) {
 	_ = s.send(c, "ERROR", sessionID, map[string]any{"code": code})
+}
+func safeType(value string) string {
+	switch value {
+	case "REGISTER_RANDOM", "REGISTER_FIXED", "CONNECT", "CONFIRM", "OFFER", "ANSWER", "ICE", "GEOMETRY", "CONTROL_ACK", "AUDIO_STATE", "ICE_RESTART", "CONTROL_OFFER", "CONTROL_ANSWER", "CONTROL_ICE", "CONTROL_RESTART", "HEARTBEAT", "LEASE_RENEW", "REVOKE":
+		return value
+	default:
+		return "UNKNOWN"
+	}
 }
 
 type rateLimitError struct{ seconds int }

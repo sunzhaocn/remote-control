@@ -17,10 +17,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val sessions get() = (getApplication<Application>() as SimpleRcApplication).sessions
 
     init {
+        val saved=application.getSharedPreferences("video_settings",android.content.Context.MODE_PRIVATE).getString("policy","tuned")
+        AppStateStore.update { it.copy(selectedVideoPolicy=if(saved=="default")"default" else "tuned") }
         refreshPermissions()
+    }
+    fun setVideoPolicy(tuned:Boolean) {
+        val policy=if(tuned)"tuned" else "default"
+        getApplication<Application>().getSharedPreferences("video_settings",android.content.Context.MODE_PRIVATE).edit().putString("policy",policy).apply()
+        AppStateStore.update { it.copy(selectedVideoPolicy=policy) }
     }
 
     fun selectRole(role: DeviceRole) {
+        if(role==DeviceRole.CONTROLLED && !AccessibilityStatus.isEnabled(getApplication()))return
+        if(state.value.role!=role && (state.value.activeSessionId!=null || state.value.incomingSessionId!=null))sessions.disconnect()
         if (role == DeviceRole.CONTROLLER && state.value.standbyServiceRunning) {
             stopStandby()
         }
@@ -42,6 +51,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAudioSharingAllowed(allowed: Boolean) {
         AppStateStore.setAudioSharingAllowed(allowed)
+        if(state.value.activeSessionId!=null) {
+            if(!allowed)com.simplerc.app.session.SessionMedia.instance(getApplication()).onLocalAudioSharingChanged(false)
+            updateAudioPermission()
+        }
+    }
+    fun updateAudioPermission() {
+        if(state.value.activeSessionId==null || state.value.role!=DeviceRole.CONTROLLED)return
+        val app=getApplication<Application>()
+        app.startService(Intent(app,com.simplerc.app.capture.ScreenShareService::class.java).setAction(com.simplerc.app.capture.ScreenShareService.ACTION_AUDIO_UPDATE)
+            .putExtra(com.simplerc.app.capture.ScreenShareService.EXTRA_AUDIO_ENABLED,state.value.audioSharingAllowed && ContextCompat.checkSelfPermission(app,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED))
     }
 
     fun startStandby(): Boolean {
@@ -63,11 +82,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sessions.stop()
     }
 
-    fun connect(targetId: String, code: String) = sessions.connectTo(targetId, code)
+    fun connect(targetId: String, code: String) {
+        val app=getApplication<Application>()
+        ContextCompat.startForegroundService(app,Intent(app,com.simplerc.app.service.ControllerService::class.java)
+            .putExtra(com.simplerc.app.service.ControllerService.EXTRA_ID,targetId)
+            .putExtra(com.simplerc.app.service.ControllerService.EXTRA_CODE,code))
+    }
     fun disconnect() = sessions.disconnect()
     fun confirmIncoming(accepted: Boolean) = sessions.confirmIncoming(accepted)
     fun registerFixed(id: String, code: String) = sessions.registerFixed(id, code)
     fun useRandomCredentials() = sessions.useRandomCredentials()
-    fun retryControlled() = sessions.retryControlled()
+    fun retryControlled() { if(state.value.standbyServiceRunning)sessions.retryControlled() else startStandby() }
 }
 

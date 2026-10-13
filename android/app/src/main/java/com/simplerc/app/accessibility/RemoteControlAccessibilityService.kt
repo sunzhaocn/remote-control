@@ -4,8 +4,15 @@ import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 
 class RemoteControlAccessibilityService : AccessibilityService() {
-    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
-    override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
+    override fun onServiceConnected() { super.onServiceConnected(); instance = this;com.simplerc.app.state.AppStateStore.updatePermissions(true,com.simplerc.app.state.AppStateStore.state.value.notificationPermissionGranted) }
+    override fun onDestroy() {
+        if(instance!==this) { super.onDestroy();return }
+        instance=null
+        val state=com.simplerc.app.state.AppStateStore.state.value
+        com.simplerc.app.state.AppStateStore.updatePermissions(false,state.notificationPermissionGranted)
+        if(state.role==com.simplerc.app.model.DeviceRole.CONTROLLED && state.activeSessionId!=null)(application as com.simplerc.app.SimpleRcApplication).sessions.endFailedSession("ACCESSIBILITY_LOST","无障碍服务已停止，共享已结束")
+        super.onDestroy()
+    }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit

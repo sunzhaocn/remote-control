@@ -11,7 +11,7 @@ object AccessibilityStatus {
             context.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
         ).orEmpty()
-        return enabled.split(':').any { flattened ->
+        return RemoteControlAccessibilityService.instance!=null && enabled.split(':').any { flattened ->
             ComponentName.unflattenFromString(flattened) == expected
         }
     }

@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
@@ -48,6 +49,9 @@ class MainActivity : ComponentActivity() {
             }
             val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
                 screenCapture.launch(projectionManager.createScreenCaptureIntent())
+            }
+            val liveAudioPermission=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if(!granted)viewModel.setAudioSharingAllowed(false) else viewModel.updateAudioPermission()
             }
 
             LaunchedEffect(Unit) {
@@ -83,7 +87,8 @@ class MainActivity : ComponentActivity() {
                         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 },
-                openBatterySettings = { startActivity(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)) },
+                openBatterySettings = { runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }.onFailure { startActivity(Intent(Settings.ACTION_SETTINGS)) } },
+                requestAudioPermission = { liveAudioPermission.launch(Manifest.permission.RECORD_AUDIO) },
                 requestScreenCapture = {
                     if (viewModel.state.value.audioSharingAllowed &&
                         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED

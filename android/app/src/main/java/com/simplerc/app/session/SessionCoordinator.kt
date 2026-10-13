@@ -41,6 +41,24 @@ class SessionCoordinator(private val app: Application) {
     private var rateLimitCountdown: Job? = null
     private var pendingRegistrationId: String? = null
     private var resumeAction: (() -> Unit)? = null
+    private var recoveryDeadlineJob: Job? = null
+    private var recoveryDeadlineMs: Long? = null
+    private var mediaRecoveryJob: Job? = null
+    private var leaseAuthorized = false
+    private var ending = false
+    val sessionAuthorized: Boolean get() = leaseAuthorized && !ending && AppStateStore.state.value.activeSessionId != null
+
+    init {
+        app.getSystemService(android.net.ConnectivityManager::class.java).registerDefaultNetworkCallback(
+            object:android.net.ConnectivityManager.NetworkCallback() {
+                override fun onLost(network:android.net.Network) { scope.launch {
+                    if(!networkAvailable() && resumeAction!=null && !ending) {
+                        beginRecovery()
+                        transportLost(ConnectionFailure("NETWORK_UNAVAILABLE"))
+                    }
+                } }
+            })
+    }
 
     fun loadSavedCredentials() {
         val fixed = secrets.get("fixed_mode") == "1"
@@ -54,7 +72,7 @@ class SessionCoordinator(private val app: Application) {
     }
 
     fun startControlled() {
-        if (localSaving || connectionJob?.isActive == true || rateLimited()) return
+        if (localSaving || connectionJob?.isActive == true) return
         enabled = true
         loadSavedCredentials()
         AppStateStore.update { it.copy(sessionState=SessionState.REGISTERING,statusDetail="正在连接信令服务",errorMessage=null) }
@@ -107,8 +125,9 @@ class SessionCoordinator(private val app: Application) {
             fail("INVALID_REQUEST","ID 或验证码格式不正确"); return
         }
         AppStateStore.update { it.copy(sessionState=SessionState.CONNECTING,statusDetail="正在连接被控设备",errorMessage=null) }
+        val selectedPolicy=AppStateStore.state.value.selectedVideoPolicy
         val action = {
-            if (send("CONNECT",null,JSONObject().put("targetId",id).put("code",code))) {
+            if (send("CONNECT",null,JSONObject().put("targetId",id).put("code",code).put("videoPolicy",selectedPolicy))) {
                 armTimeout(AppConfig.CONFIRM_TIMEOUT_SECONDS + 5,"等待被控端确认超时（CONFIRMATION_TIMEOUT）")
             } else fail("SIGNAL_SEND_FAILED","信令发送失败")
         }
@@ -183,14 +202,14 @@ class SessionCoordinator(private val app: Application) {
                 }
             } catch (e:TimeoutCancellationException) {
                 closeTransport()
-                fail("SERVER_UNREACHABLE","服务器连接超时（SERVER_UNREACHABLE）")
+                if(recoveryDeadlineMs==null)fail("SERVER_UNREACHABLE","服务器连接超时（SERVER_UNREACHABLE）")
                 if(reconnectJob?.isActive != true) scheduleReconnect()
             } catch (e:CancellationException) { throw e
             } catch (e:Exception) {
                 closeTransport()
                 val failure=connectionFailure(e)
                 if(failure.code=="RATE_LIMITED") startRateLimitCountdown(failure.retryAfterSeconds.coerceAtLeast(1))
-                else { fail(failure.code,errorText(failure.code)); if(failure.code!="TLS_FAILED" && failure.code!="DEVICE_AUTH_FAILED" && reconnectJob?.isActive != true) scheduleReconnect() }
+                else { if(recoveryDeadlineMs==null || failure.code in listOf("TLS_FAILED","DEVICE_AUTH_FAILED"))fail(failure.code,errorText(failure.code)); if(failure.code!="TLS_FAILED" && failure.code!="DEVICE_AUTH_FAILED" && reconnectJob?.isActive != true) scheduleReconnect() }
             }
         }
     }
@@ -208,15 +227,13 @@ class SessionCoordinator(private val app: Application) {
     }
 
     private fun scheduleReconnect() {
-        if (resumeAction==null || reconnectJob?.isActive==true || rateLimited()) return
+        if (resumeAction==null || reconnectJob?.isActive==true) return
+        beginRecovery()
         reconnectJob=scope.launch {
-            val deadline=SystemClock.elapsedRealtime()+AppConfig.RECONNECT_GRACE_SECONDS*1000
+            val deadline=recoveryDeadlineMs ?: return@launch
             var pause=1000L
             while(SystemClock.elapsedRealtime()<deadline) {
-                val left=((deadline-SystemClock.elapsedRealtime())/1000).coerceAtLeast(0)
-                AppStateStore.update { it.copy(sessionState=SessionState.RECONNECTING,controlEnabled=false,
-                    statusDetail=if(networkAvailable()) "服务器不可达，正在重连（剩余 ${left} 秒）" else "网络不可用，等待恢复（剩余 ${left} 秒）") }
-                delay(pause+random.nextInt(AppConfig.RECONNECT_JITTER_MILLIS))
+                delay((pause+random.nextInt(AppConfig.RECONNECT_JITTER_MILLIS)).coerceAtMost((deadline-SystemClock.elapsedRealtime()).coerceAtLeast(0)))
                 if(!networkAvailable()) { pause=(pause*2).coerceAtMost(AppConfig.RECONNECT_MAX_DELAY_SECONDS*1000);continue }
                 connectSignal {
                     val active=AppStateStore.state.value.activeSessionId
@@ -225,12 +242,55 @@ class SessionCoordinator(private val app: Application) {
                 }
                 val remaining=deadline-SystemClock.elapsedRealtime()
                 if(remaining<=0 || withTimeoutOrNull(remaining) { connectionJob?.join();true }==null) break
-                if(connected || rateLimited() || AppStateStore.state.value.errorMessage in listOf("TLS_FAILED","DEVICE_AUTH_FAILED")) return@launch
+                if(connected || AppStateStore.state.value.errorMessage in listOf("TLS_FAILED","DEVICE_AUTH_FAILED")) return@launch
                 pause=(pause*2).coerceAtMost(AppConfig.RECONNECT_MAX_DELAY_SECONDS*1000)
             }
-            closeTransport()
-            connectionJob?.cancel()
-            fail("RECONNECT_TIMEOUT","重连超时，请重试或停止")
+            if(recoveryDeadlineMs!=null)endFailedSession("RECONNECT_TIMEOUT","重连超过 15 秒，请重试或停止")
+        }
+    }
+
+    private fun beginRecovery() {
+        if(recoveryDeadlineMs!=null || ending)return
+        val deadline=SystemClock.elapsedRealtime()+AppConfig.RECONNECT_GRACE_SECONDS*1000
+        recoveryDeadlineMs=deadline
+        recoveryDeadlineJob=scope.launch {
+            while(isActive && SystemClock.elapsedRealtime()<deadline) {
+                val left=((deadline-SystemClock.elapsedRealtime()+999)/1000).coerceAtLeast(0)
+                val media=if(AppStateStore.state.value.activeSessionId!=null)SessionMedia.instance(app) else null
+                AppStateStore.update { it.copy(sessionState=SessionState.RECONNECTING,
+                    statusDetail=if(networkAvailable()) "正在恢复连接 · ${left}s" else "网络不可用 · ${left}s 后断开",
+                    controlEnabled=media?.transportReady==true && sessionAuthorized) }
+                media?.refreshControlAvailability()
+                delay(250)
+            }
+            if(recoveryDeadlineMs==deadline)endFailedSession("RECONNECT_TIMEOUT","重连超过 15 秒，请重试或停止")
+        }
+    }
+    private fun recoveryComplete() {
+        recoveryDeadlineMs=null;recoveryDeadlineJob?.cancel();recoveryDeadlineJob=null
+        mediaRecoveryJob?.cancel();reconnectJob?.cancel();reconnectJob=null
+    }
+    fun mediaTransportLost() {
+        if(AppStateStore.state.value.activeSessionId==null || ending)return
+        beginRecovery()
+        mediaRecoveryJob?.cancel()
+        mediaRecoveryJob=scope.launch {
+            delay(1200)
+            val id=AppStateStore.state.value.activeSessionId ?: return@launch
+            if(connected && !SessionMedia.instance(app).transportReady) {
+                if(AppStateStore.state.value.role==DeviceRole.CONTROLLED)SessionMedia.instance(app).restartIce()
+                else {send("ICE_RESTART",id,JSONObject());send("CONTROL_RESTART",id,JSONObject())}
+            }
+        }
+    }
+    fun mediaTransportRestored() {
+        val media=SessionMedia.instance(app)
+        if(connected && sessionAuthorized && media.transportReady) {
+            val recovered=recoveryDeadlineMs!=null
+            recoveryComplete()
+            AppStateStore.update { it.copy(sessionState=SessionState.CONNECTED,statusDetail="已连接",errorMessage=null) }
+            media.refreshControlAvailability()
+            if(recovered)media.synchronizeAfterRecovery()
         }
     }
 
@@ -245,6 +305,7 @@ class SessionCoordinator(private val app: Application) {
                     if(!enabled || payload.optString("id")!=pendingRegistrationId) return
                     operationTimeout?.cancel()
                     pendingRegistrationId=null
+                    recoveryComplete()
                     AppStateStore.update { it.copy(sessionState=SessionState.STANDBY,statusDetail="被控待机中",
                         credentialsRegistered=true,credentialPublishing=false,errorMessage=null,retryAfterSeconds=null) }
                     if(secrets.get("fixed_mode")!="1") credentialRefresh=scope.launch {
@@ -263,26 +324,29 @@ class SessionCoordinator(private val app: Application) {
                 }
                 "CONFIRMED" -> {
                     operationTimeout?.cancel()
+                    leaseAuthorized=true
                     AppStateStore.update { it.copy(sessionState=SessionState.CONNECTING,statusDetail="正在建立媒体连接",activeSessionId=id) }
                     startHeartbeat(id ?: return)
                     SessionMedia.instance(app).onConfirmed(id,payload,::sendRaw)
                     operationTimeout=scope.launch {
                         delay(AppConfig.HANDSHAKE_TIMEOUT_SECONDS*1000)
                         if(AppStateStore.state.value.sessionState!=SessionState.CONNECTED) {
-                            send("REVOKE",id,JSONObject())
-                            SessionMedia.instance(app).close()
-                            heartbeat?.cancel()
-                            resumeAction=if(enabled) ::publishCurrentCredentials else null
-                            AppStateStore.update { it.copy(activeSessionId=null) }
-                            fail("MEDIA_TIMEOUT","媒体连接超时（MEDIA_TIMEOUT）")
+                            endFailedSession("MEDIA_TIMEOUT","视频或控制连接超时：${SessionMedia.instance(app).readinessDescription()}（MEDIA_TIMEOUT）")
                         }
                     }
                 }
-                "OFFER","ANSWER","ICE","GEOMETRY","AUDIO_STATE" -> if (id != null && id == AppStateStore.state.value.activeSessionId)
+                "OFFER","ANSWER","ICE","GEOMETRY","AUDIO_STATE","ICE_RESTART","CONTROL_OFFER","CONTROL_ANSWER","CONTROL_ICE","CONTROL_RESTART" -> if (id != null && id == AppStateStore.state.value.activeSessionId)
                     SessionMedia.instance(app).onSignal(type,id,payload,::sendRaw)
+                "HEARTBEAT_ACK" -> if(id!=null && id==AppStateStore.state.value.activeSessionId) { leaseAuthorized=true;mediaTransportRestored() }
                 "REJECTED" -> { operationTimeout?.cancel();resumeAction=null;fail("REJECTED","被控端拒绝连接") }
                 "REVOKED" -> {
-                    disconnect()
+                    if(id==null || id!=AppStateStore.state.value.activeSessionId && id!=AppStateStore.state.value.incomingSessionId)return
+                    val reason=payload.optString("reason")
+                    if(reason in listOf("LEASE_LOST","RECONNECT_TIMEOUT")) {
+                        endFailedSession(reason,if(reason=="LEASE_LOST")"会话租约已失效（LEASE_LOST）" else "连接已超过 15 秒未恢复，请重试或停止")
+                        return
+                    }
+                    disconnect(false)
                     AppStateStore.update { it.copy(statusDetail=if(payload.optString("reason")=="CONFIRMATION_TIMEOUT") "被控端确认超时" else "会话已结束") }
                 }
                 "ERROR" -> {
@@ -290,12 +354,21 @@ class SessionCoordinator(private val app: Application) {
                     operationTimeout?.cancel()
                     if(!enabled) resumeAction=null
                     if(code=="RATE_LIMITED") startRateLimitCountdown(payload.optInt("retryAfterSeconds",60).coerceAtLeast(1))
-                    else fail(code,errorText(code))
+                    else if (code=="STALE_OR_INVALID") {
+                        val detail=when(payload.optString("reason")) {
+                            "SEQUENCE" -> "信令发送顺序错误"
+                            "TIME" -> "信令时间已过期，请核对手机时间"
+                            "VERSION" -> "信令版本不匹配"
+                            else -> "信令无效或已过期"
+                        }
+                        fail(code,"$detail（STALE_OR_INVALID，${payload.optString("requestType","UNKNOWN")}）")
+                    } else fail(code,errorText(code))
                 }
             }
         }.onFailure { fail("SIGNAL_PROCESSING_FAILED","信令处理失败（SIGNAL_PROCESSING_FAILED）") }
     }
 
+    @Synchronized
     private fun send(type:String,id:String?,payload:JSONObject):Boolean {
         if(!connected) return false
         val envelope=JSONObject().put("version",1).put("type",type).put("sequence",sequence.incrementAndGet())
@@ -314,13 +387,23 @@ class SessionCoordinator(private val app: Application) {
             statusDetail=if(accepted) "正在等待共享服务启动" else "已拒绝连接",incomingSessionId=null,activeSessionId=if(accepted) id else null) }
     }
     fun disconnect() {
-        AppStateStore.state.value.activeSessionId?.let { send("REVOKE",it,JSONObject()) }
+        disconnect(true)
+    }
+    private fun disconnect(notifyPeer:Boolean) {
+        if(ending)return
+        ending=true
+        AppStateStore.state.value.activeSessionId?.let { if(notifyPeer)send("REVOKE",it,JSONObject()) }
+        leaseAuthorized=false
+        recoveryComplete()
         operationTimeout?.cancel();heartbeat?.cancel();credentialRefresh?.cancel();reconnectJob?.cancel();connectionJob?.cancel()
+        AppStateStore.update { it.copy(activeSessionId=null,incomingSessionId=null,controlEnabled=false,remoteVideoAvailable=false) }
         SessionMedia.closeIfCreated()
         app.stopService(android.content.Intent(app,com.simplerc.app.capture.ScreenShareService::class.java))
+        app.stopService(android.content.Intent(app,com.simplerc.app.service.ControllerService::class.java))
         if(!enabled) { resumeAction=null;closeTransport() }
         AppStateStore.update { it.copy(sessionState=if(enabled) SessionState.STANDBY else SessionState.IDLE,
-            statusDetail=if(enabled) "被控待机中" else "未连接",activeSessionId=null,incomingSessionId=null,controlEnabled=false,remoteVideoAvailable=false,credentialPublishing=false,remoteRotation=null,remoteCaptureWidth=0,remoteCaptureHeight=0) }
+            statusDetail=if(enabled) "被控待机中" else "未连接",activeSessionId=null,incomingSessionId=null,controlEnabled=false,remoteVideoAvailable=false,credentialPublishing=false,remoteRotation=null,remoteCaptureWidth=0,remoteCaptureHeight=0,rttMs=null,packetLossPercent=null,remoteAudioAllowed=false,mediaDiagnostics=null,videoPolicyStatus="",activeVideoPolicy=null,controlRttMs=null,controlConnectionPath="未知") }
+        ending=false
         if(enabled && connected && secrets.get("fixed_mode")!="1") publishCurrentCredentials()
     }
     fun stop() {
@@ -331,21 +414,37 @@ class SessionCoordinator(private val app: Application) {
     }
     private fun closeTransport() { generation++;connected=false;opening=null;signal?.close();signal=null }
     private fun fail(code:String,message:String) {
+        if(AppStateStore.state.value.activeSessionId!=null && !ending) { endFailedSession(code,message);return }
         pendingRegistrationId=null
         AppStateStore.update { it.copy(sessionState=SessionState.ERROR,statusDetail=message,errorMessage=code,credentialPublishing=false,incomingSessionId=null) }
+    }
+    fun endFailedSession(code:String,message:String) {
+        if(ending)return
+        enabled=false;resumeAction=null
+        disconnect(code!="LEASE_LOST" && code!="SESSION_INVALID")
+        rateLimitCountdown?.cancel();pendingRegistrationId=null;closeTransport()
+        app.stopService(android.content.Intent(app,com.simplerc.app.service.StandbyService::class.java))
+        app.stopService(android.content.Intent(app,com.simplerc.app.service.ControllerService::class.java))
+        AppStateStore.update { it.copy(sessionState=SessionState.ERROR,statusDetail=message,errorMessage=code,
+            credentialsRegistered=false,credentialPublishing=false,retryAfterSeconds=null,standbyServiceRunning=false,
+            availability=com.simplerc.app.model.AvailabilityState.ERROR,controlEnabled=false,activeSessionId=null,incomingSessionId=null) }
+    }
+    fun serviceDestroyed(role:DeviceRole) {
+        if(AppStateStore.state.value.role!=role || AppStateStore.state.value.sessionState==SessionState.ERROR)return
+        stop()
     }
     private fun startRateLimitCountdown(seconds:Int) {
         reconnectJob?.cancel();rateLimitCountdown?.cancel()
         rateLimitCountdown=scope.launch {
             for(left in seconds downTo 1) {
-                AppStateStore.update { it.copy(sessionState=SessionState.ERROR,statusDetail="被限流，${left} 秒后可重试（RATE_LIMITED）",
-                    errorMessage="RATE_LIMITED",retryAfterSeconds=left,credentialPublishing=false) }
+                AppStateStore.update { if(it.role==DeviceRole.CONTROLLER)it.copy(sessionState=SessionState.ERROR,statusDetail="被限流，${left} 秒后可重试（RATE_LIMITED）",
+                    errorMessage="RATE_LIMITED",retryAfterSeconds=left,credentialPublishing=false) else it.copy(retryAfterSeconds=left) }
                 delay(1000)
             }
-            AppStateStore.update { it.copy(statusDetail="可以重试",retryAfterSeconds=0) }
+            AppStateStore.update { it.copy(statusDetail=if(it.role==DeviceRole.CONTROLLER)"可以重试" else it.statusDetail,retryAfterSeconds=0) }
         }
     }
-    private fun rateLimited()=(AppStateStore.state.value.retryAfterSeconds ?: 0)>0
+    private fun rateLimited()=AppStateStore.state.value.role==DeviceRole.CONTROLLER && (AppStateStore.state.value.retryAfterSeconds ?: 0)>0
     private fun sessionBusy()=AppStateStore.state.value.sessionState in listOf(SessionState.WAITING_CONFIRMATION,SessionState.CONNECTING,SessionState.CONNECTED,SessionState.RECONNECTING)
     fun retryControlled() { if(enabled && !rateLimited()) startControlled() }
     private fun networkAvailable()=app.getSystemService(android.net.ConnectivityManager::class.java).activeNetwork!=null

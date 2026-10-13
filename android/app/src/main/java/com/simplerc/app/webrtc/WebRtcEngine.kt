@@ -16,9 +16,12 @@ class WebRtcEngine(context: Context) : AutoCloseable {
     private val audioDeviceModule: AudioDeviceModule
     val eglContext: EglBase.Context get() = egl.eglBaseContext
     val factory: PeerConnectionFactory
+    private val hardwareCodecs=HardwareVideoEncoderFactory(egl.eglBaseContext,true,true).supportedCodecs.map { it.name.uppercase() }.toSet()
     init {
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions())
         audioDeviceModule = JavaAudioDeviceModule.builder(context.applicationContext)
+            .setUseHardwareAcousticEchoCanceler(false)
+            .setUseHardwareNoiseSuppressor(false)
             .setAudioRecordFactory { sampleRate, channelConfig, audioFormat, bufferSize ->
                 val activeProjection = checkNotNull(projection.get()) { "MediaProjection 尚未建立" }
                 val playbackConfig = android.media.AudioPlaybackCaptureConfiguration.Builder(activeProjection)
@@ -39,6 +42,15 @@ class WebRtcEngine(context: Context) : AutoCloseable {
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext)).createPeerConnectionFactory()
     }
     fun createVideoSource(): VideoSource = factory.createVideoSource(true)
+    fun preferScreenCodecs(transceiver:RtpTransceiver,sending:Boolean):Boolean {
+        if(!com.simplerc.app.config.AppConfig.VIDEO_PREFER_HARDWARE_H264)return false
+        if(sending && "H264" !in hardwareCodecs)return false
+        val capabilities=if(sending)factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO)
+            else factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO)
+        if(capabilities.codecs.none { it.name.equals("H264",true) })return false
+        transceiver.setCodecPreferences(capabilities.codecs.sortedBy { if(it.name.equals("H264",true))0 else 1 })
+        return true
+    }
     fun setMediaProjection(value: MediaProjection?) = projection.set(value)
     fun createPeer(configuration: PeerConnection.RTCConfiguration, observer: PeerConnection.Observer): PeerConnection = requireNotNull(factory.createPeerConnection(configuration, observer))
     override fun close() { factory.dispose(); audioDeviceModule.release(); egl.release() }

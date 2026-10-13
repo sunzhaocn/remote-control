@@ -15,6 +15,7 @@ import com.simplerc.app.state.AppStateStore
 
 class StandbyService : Service() {
     private var started = false
+    private var work:ForegroundWork?=null
     override fun onCreate() {
         super.onCreate()
         NotificationChannels.create(this)
@@ -39,12 +40,15 @@ class StandbyService : Service() {
         )
         AppStateStore.onStandbyServiceStarted()
         started = true
+        val stop=PendingIntent.getService(this,1,Intent(this,StandbyService::class.java).setAction(ACTION_STOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        work=ForegroundWork(this).also { it.start();it.observe { state -> getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_ID,SessionNotification.build(this,if(state.activeSessionId!=null)"远程共享待机服务" else "被控待机中",state,stop)) } }
         (application as com.simplerc.app.SimpleRcApplication).sessions.startControlled()
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        (application as com.simplerc.app.SimpleRcApplication).sessions.stop()
+        work?.close()
+        (application as com.simplerc.app.SimpleRcApplication).sessions.serviceDestroyed(com.simplerc.app.model.DeviceRole.CONTROLLED)
         AppStateStore.onStandbyServiceStopped()
         super.onDestroy()
     }

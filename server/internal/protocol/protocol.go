@@ -17,6 +17,19 @@ type Envelope struct {
 }
 
 func (e Envelope) Valid(last uint64) bool {
+	return e.RejectionReason(last) == ""
+}
+
+func (e Envelope) RejectionReason(last uint64) string {
 	now := time.Now().UnixMilli()
-	return e.Version == 1 && e.Sequence > last && e.SentAt >= now-60_000 && e.SentAt <= now+10_000
+	if e.Version != 1 {
+		return "VERSION"
+	}
+	if e.Sequence <= last {
+		return "SEQUENCE"
+	}
+	if e.SentAt < now-60_000 || e.SentAt > now+10_000 {
+		return "TIME"
+	}
+	return ""
 }

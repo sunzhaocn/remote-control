@@ -15,8 +15,18 @@ object AppConfig {
     const val SIGNAL_DEAD_SECONDS = 45L
     const val LEASE_TTL_SECONDS = 30L
     const val LEASE_RENEW_SECONDS = 10L
-    const val RECONNECT_GRACE_SECONDS = 120L
-    const val RECONNECT_MAX_DELAY_SECONDS = 15L
+    const val RECONNECT_GRACE_SECONDS = 15L
+    const val RECONNECT_MAX_DELAY_SECONDS = 4L
     const val RECONNECT_JITTER_MILLIS = 750
     const val SIGNAL_CONNECT_TIMEOUT_SECONDS = 20L
+    const val QUALITY_UPDATE_MILLIS = 2000L
+    const val VIDEO_CAPTURE_LONG_EDGE = 1280
+    const val VIDEO_MAX_FPS = 30
+    const val VIDEO_MIN_BITRATE_BPS = 300_000
+    const val VIDEO_START_BITRATE_BPS = 2_000_000
+    // null means no application ceiling; libwebrtc/codec/device limits still apply.
+    val VIDEO_MAX_BITRATE_BPS: Int? = null
+    const val AUDIO_BITRATE_HEADROOM_BPS = 128_000
+    const val VIDEO_PREFER_HARDWARE_H264 = true
+    const val VIDEO_MAINTAIN_FRAMERATE = true
 }

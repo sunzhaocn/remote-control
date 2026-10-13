@@ -178,3 +178,9 @@ Android 14+ 默认让用户选择整屏或单应用。单应用共享会排除�
 ## 已构建补丁（2026-10-13）
 
 实际采用的 GetStream 1.3.10 包含 Java 源码和预编译四 ABI 原生库，因此无需 Chromium 全量构建。补丁只增加由调用者提供 `AudioRecord` 的入口；应用提供的实现固定使用 `AudioPlaybackCaptureConfiguration`，不使用麦克风源。AAR 构建和应用构建均成功，实际资源数据见 `webrtc-patch/BUILD_LINUX.md`。后台共享时，Android 官方对正在使用 `RECORD_AUDIO` 的捕获要求 microphone 类型前台服务；实现只在用户允许且权限已授予时动态启动该类型。被否决的“混入麦克风缓冲”仍不采用，因为它扩大隐私权限、无法保证纯内部音频、会引入回声/环境声且违背不得以变通冒充内部音频的约束。
+
+## 0.3.5 质量与亮屏核查
+
+RTT来自候选对currentRoundTripTime，视频丢包、编解码与冻结字段遵循[W3C stats](https://www.w3.org/TR/webrtc-stats/)。字段未提供即未知，不能凭设置H.264偏好断言硬件路径，也不能把ICE RTT说成整个输入/画面延迟。新最大码率为null，表示不额外设置应用上限；仍受库默认/编码器及网络限制，无统一理论Mbps数值。
+
+前台Activity使用KEEP_SCREEN_ON；活跃共享用有期限SCREEN_BRIGHT_WAKE_LOCK（废弃API）和CPU锁，不修改全局超时、不唤醒主动锁屏。厂商仍可限制服务/锁，不能保证永不被杀。依据[Android唤醒锁](https://developer.android.com/develop/background-work/background-tasks/awake/wakelock)。后台内部播放捕获仍只在RECORD_AUDIO许可和本机允许时加入microphone类型；未采用混入麦克风方案，前文理由保持。

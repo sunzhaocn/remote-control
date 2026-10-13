@@ -6,7 +6,7 @@ import kotlin.random.Random
 enum class FailureKind { TEMPORARY_NETWORK, SIGNALING_ONLY, ICE_FAILED, MEDIA_STALLED, PROJECTION_STOPPED, USER_STOPPED }
 enum class RecoveryState { CONNECTED, WAITING, SIGNAL_RECONNECT, ICE_RESTART, REBUILD_PEER, SYNCING, ENDED }
 sealed interface RecoveryAction { data class Wait(val millis:Long):RecoveryAction; data object ReconnectSignal:RecoveryAction; data object RestartIce:RecoveryAction; data object RebuildPeer:RecoveryAction; data object SyncState:RecoveryAction; data object End:RecoveryAction }
-class RecoveryStateMachine(private val graceMs:Long=120_000) {
+class RecoveryStateMachine(private val graceMs:Long=com.simplerc.app.config.AppConfig.RECONNECT_GRACE_SECONDS*1000) {
     var state=RecoveryState.CONNECTED; private set
     private var startedAt=0L; private var attempt=0
     fun fail(kind:FailureKind,now:Long=System.currentTimeMillis()):RecoveryAction{

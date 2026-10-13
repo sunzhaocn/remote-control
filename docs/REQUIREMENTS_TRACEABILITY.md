@@ -1,192 +1,204 @@
-# 需求条款对照表
+# 需求条款逐条对照（0.3.5）
 
-## 0.3.3 反馈修订（以本节及 STATE 为当前状态）
+每个编号独立一行。状态仅为已实现/部分实现/未实现/已知偏离；构建和实机边界见STATE。0.3.4测试不得当作0.3.5新策略/独立连接通过。用户修订优先原文。
 
-| 条款 | 状态 | 实现文件与验证边界 |
+| 条款与内容 | 状态 | 实现文件/证据 | 边界 |
+| --- | --- | --- | --- |
+| 0.1 条款冲突时的取舍顺序：安全与正确性 > 可恢复性 > 低延迟 > 功能完整度。按此取舍时… | 已实现 | docs/DECISIONS.md、docs/STATE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 0.2 功能分级： | 部分实现 | docs/DECISIONS.md、docs/STATE.md | P0/P1仍有缺口；诊断/策略P2获专项授权，其余P2未做 |
+| 0.3 无法确认可行的技术点，如实报告并给出备选方案，等我决定，不用变通做法冒充已实现。 | 已实现 | docs/DECISIONS.md、docs/STATE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 0.4 首版不支持无人值守：每次控制会话都需要被控手机本机确认，并取得系统采集授权。 | 已实现 | docs/DECISIONS.md、docs/STATE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.1 工作流程为：阅读工程与环境 → 简短实施计划 → 阶段 0 技术可行性核查 → 分阶段实… | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 用户允许连续阶段，最终统一交付 |
+| 1.2 不自动编写或运行单元测试、仪器测试、UI 自动化、集成测试、端到端测试、压力测试或性能测… | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 用户授权双机测试，之后明确结束；不运行go test |
+| 1.3 不自动启动模拟器，不自动安装或启动 APK，不自动执行 ADB 操作，不默认连接或操作手… | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 用户授权安装/手机测试/部署，结束后不继续手机操作 |
+| 1.4 允许的检查只有：阅读与静态审查代码、配置依赖、明确指定的 Gradle 任务（如 :ap… | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 后续授权设备测试与服务器部署，构建仍使用指定任务 |
+| 1.5 编译成功只能叫构建验证，不能叫功能测试通过。 | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.6 提供人工双机验收清单，由我自行执行。标注哪些已经实现、哪些已经编译、哪些尚未实机验证，不… | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.7 项目记忆文档（放在仓库 docs/ 下，每次会话开始先阅读，每个阶段和每次修复后更新）： | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.8 每个阶段结束时按固定格式报告：本阶段完成内容、修改文件范围、构建结果、尚未完成项、新增或… | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 用户允许连续阶段，报告保留，最终一次提交 |
+| 1.9 收到反馈后，先根据复现步骤、相关代码和可用日志定位。区分已确认原因与推测，缺少关键证据时… | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.10 每次修复说明原因或当前判断、修改范围、可能影响、编译结果和需要我复测的步骤，保留可回退的… | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.11 遇到疑难问题可以提出接入手机排查，但必须先说明目标设备、工具、数据范围和拟执行操作，等待… | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.12 手机已连接不代表可以任意读取或操作。日志读取、安装、启动、模拟点击、权限调整等必须在授权… | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 诊断两次输出范围过大，已纠正且不使用无关内容，见DEVICE_TEST_0.3.4 |
+| 1.13 USB 调试及电脑 RSA 授权由我在手机上确认；ADB 只用于开发诊断，不作为正式远控… | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 1.14 不自动购买服务器、产生费用、部署公网服务、上架应用商店或接受新的商业服务。 | 已知偏离 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 用户授权现有服务器部署；不购买新服务、不上传新APK |
+| 1.15 普通实现细节选择合理默认并说明；涉及费用、授权扩大、破坏性操作、手机访问或实质需求冲突时… | 已实现 | docs/PHASE_REPORTS.md、docs/DEVICE_TEST_0.3.4.md、docs/BUG_FIX_0.3.4.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.1 一个 Android APK 同时包含控制端和被控端。客户端使用 Kotlin、Jetp… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.2 使用 Android Studio、Android SDK、Build Tools、Pl… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.3 根据官方兼容关系固定 AGP、Gradle、JDK、Kotlin、Compose 和依赖… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.4 默认最低支持 Android 10（AudioPlaybackCapture 的最低要求… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.5 使用原生 WebRTC：视频轨道传屏幕、音频轨道传允许捕获的内部声音、DataChann… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.6 屏幕采集使用 MediaProjection；触控和返回、桌面、最近任务使用 Acces… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.7 优先协商双方实际支持的 H.264 硬件编解码，提供兼容降级，不假定所有手机支持 H.2… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | H.264能力优先，libwebrtc匹配profile并保留VP8；实际codec/实现来自stats，未实测0.3.5 |
+| 2.8 后端使用 Go、WebSocket；PostgreSQL 保存设备身份与固定 ID 归属… | 部分实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 数据库/Redis/单实例已运行，迁移SQL存在但成熟迁移工具未接入 |
+| 2.9 使用 Coturn 提供 STUN/TURN，交付 Docker Compose、开发配… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.10 正式环境使用 HTTPS/WSS；TURN 使用短期凭据，不在 APK 内硬编码永久密钥… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.11 首版在线配对依赖信令服务，媒体连接尽量直连。完全离线局域网发现和配对不属于默认首版，不能… | 已实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 2.12 工程基础约定（可在 DECISIONS.md 中说明后调整）： | 部分实现 | android/app/build.gradle.kts、android/gradle/libs.versions.toml、webrtc-patch/、server/go.mod | 主体约定满足；部分服务限流/回收参数未集中配置 |
+| 3.1 单 Activity、单主页面，主要只有“控制端”和“被控端”两个选项，点击切换，不采用… | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 3.2 页面不能上下左右滚动。远程画面里的滑动用于操作被控端，不能被本机页面截获为滚动。 | 已知偏离 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 用户修订：普通页面仅溢出滚动，远控独立 |
+| 3.3 允许必要的弹窗、系统权限页和同一应用内的远程全屏状态，不堆砌业务页面。 | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 3.4 适配小屏、横竖屏、字体大小、显示缩放和本地键盘。空间不足时折叠次要设置或放入弹窗，不得遮… | 部分实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 大字体有实机证据，全部横屏/小屏/IME组合未遍历 |
+| 3.5 控制端显示目标 ID、验证码、连接/取消/断开按钮、连接状态；连接后显示远程画面、导航按… | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 3.6 被控端显示随机/自定义模式、自己的 ID 和验证码、启用/停止被控、音频共享许可，以及权… | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 3.7 验证码默认遮挡，可主动显示或复制。日志和通知不得明文展示。 | 部分实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 遮挡/显示已有，复制未实现 |
+| 3.8 主页面顶部状态区显示当前角色与连接情况；系统通知另按 Android 规则实现，不承诺任… | 已知偏离 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/ui/FloatingNavigation.kt | 最新要求控制画面常驻统计移到通知，主动诊断弹窗可看 |
+| 4.1 只有选择并启用被控端角色、且必要权限满足时，才能被连接。 | 已实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 4.2 控制端角色不生成、注册或定时刷新本机被控随机 ID 和验证码，不能被别人控制。 | 已实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 4.3 自定义配置可以保留，但保存配置不代表设备当前在线可被控制。 | 已实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 4.4 被控端分为两个层次，分别管理： | 已实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 4.5 切换角色时撤销原角色的可用状态。存在会话时提示切换会结束会话，确认后停止；首版不同时作为… | 已实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 4.6 “重新打开应用”的定义：进程新建后用户首次进入应用，包括从最近任务划掉后重开、被系统杀死… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 会话与Activity解耦；动态旋转采集/几何仍缺口 |
+| 4.7 冷启动之后，被控角色回到“未启用”，不静默自动恢复待机；需要用户进入被控端并重新启用。自… | 已实现 | android/app/src/main/java/com/simplerc/app/MainViewModel.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/state/AppStateStore.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.1 用户无需注册登录，通过 ID＋验证码配对；后端仍需要可靠的设备认证，不能允许冒充 ID。 | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.2 首次安装创建设备身份密钥，私钥由 Android Keystore 保护；服务端保存设备… | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.3 自定义 ID 和验证码只在用户明确修改时更新，不随时间、重启或重新进入应用变化。 | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.4 ID 全局唯一，服务端原子检查和注册。其他设备已占用时显示“该 ID 已被使用，无法使用… | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.5 ID 存在性的取舍：占用检查只对已通过设备认证的设备开放，并按设备和来源限流、失败退避；… | 已知偏离 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 用户要求限流仅验证失败；注册不累计，固定ID存在性可泄露 |
+| 5.6 验证码仅作为所属 ID 的秘密，不要求全平台唯一，也不向用户泄露别人是否使用相同密码。 | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.7 统一 ID 字符、长度、大小写、空白和相似字符处理。自定义验证码建议至少 12 位；随机… | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.8 防囤积：每台设备默认只能持有 1 个固定自定义 ID；固定 ID 闲置 180 天未上线… | 部分实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 每设备唯一固定ID与基础保留词；180天回收/完整敏感词维护未实现 |
+| 5.9 随机模式只在启用被控角色时生成，等待连接期间每 5 分钟刷新；真正重新打开应用并进入被控… | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.10 控制端角色不参与被控凭据生成；旋转、重建和权限往返不触发刷新。 | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.11 随机 ID 和验证码作为一组原子替换，服务端有效期为准，旧组合立即失效，客户端同步更新倒… | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.12 已连接及重连宽限期内暂停配对凭据刷新；会话结束后生成新的随机组合并重启五分钟周期。 | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.13 固定配置可靠持久化。设备密钥丢失（卸载、清除数据）后，首版不提供账号式找回，不能仅凭公开… | 部分实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 不凭公开ID找回，闲置回收任务缺失 |
+| 5.14 验证码保护： | 已实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 5.15 凭据修改和会话撤销需使相关恢复令牌失效。日志、崩溃报告和备份不得泄露秘密。 | 部分实现 | android/app/src/main/java/com/simplerc/app/credentials/Credentials.kt、android/app/src/main/java/com/simplerc/app/security/SecretStore.kt、server/internal/api/server.go | 会话撤销/旧socket隔离已接线，独立恢复令牌方案仍需审查 |
+| 6.1 每个被控端只能由一个控制者占用，包括握手、等待确认、正常控制和重连宽限期。 | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 6.2 使用原子租约或锁，包含会话归属、心跳、过期时间；释放时验证归属，避免旧会话释放新会话。 | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 6.3 第二个控制者尝试连接已占用设备，即使凭据正确，也显示“此 ID 或验证码有误”。未知 I… | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 6.4 验证失败的各种情形，响应的内容、格式和耗时必须一致：使用常量时间比较，对失败响应加入固定… | 部分实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 常量时间哈希比较/失败下限抖动存在，严格统一成本未作负载验证 |
+| 6.5 加入来源、设备和目标维度限流、失败退避，避免爆破，同时考虑共享公网 IP 的正常用户，不… | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 6.6 默认由被控端本机确认本次控制请求，并完成必要的系统采集授权后开放控制。 | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 6.7 正确绑定设备身份、控制者、会话、信令协商和 WebRTC 指纹；验证指令类型、长度、数值… | 部分实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 设备/会话/序号/时效/几何校验，独立SDP指纹固定绑定未完成 |
+| 6.8 始终显示共享状态并提供本机停止入口。停止后立即拒绝输入、撤销重连令牌并释放相关资源。 | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 6.9 不提供隐蔽控制，不绕过系统保护，不将无登录等同于无认证。 | 已实现 | server/internal/lease/lease.go、server/internal/api/server.go、android/app/src/main/java/com/simplerc/app/control/PeerClock.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.1 进入被控端时检查无障碍服务。未启用则说明用途并引导用户进入系统设置，由用户手动开启；返回… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.2 Android 13 及以上对侧载安装的应用会限制开启无障碍。引导流程中必须包含“在应用… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.3 无障碍服务配置遵循最小权限：只声明实际需要的能力。若需要读取窗口内容以辅助输入框焦点（见… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.4 无障碍、屏幕采集和音频权限分开管理。用户拒绝音频权限不应导致已经满足条件的视频和控制不可… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.5 按系统版本及目标 SDK 正确声明 FOREGROUND_SERVICE、FOREGRO… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.6 每个新的 MediaProjection 采集会话必须取得用户同意。不得重复消费同一授权… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 新会话单次授权/投影有接线，旋转复用动态显示未完成 |
+| 7.7 网络重连和横竖屏变化不等于新的采集会话。已有采集仍有效时维持它并调整 Surface/尺… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 有效网络恢复维持捕获，动态Surface尺寸/旋转缺口 |
+| 7.8 注册并处理 MediaProjection.onStop。系统真正停止采集、进程死亡或授… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.9 首版采用完整屏幕共享，匹配全屏触控和系统导航。若用户选到单应用共享，明确说明范围限制，不… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 整屏请求默认行为，单应用实际范围识别/拒绝未完成 |
+| 7.10 实现正确的前台服务和共享通知，包含明确停止入口。通知权限受限时仍保留应用内清晰控制状态，… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.11 不把前台服务当作永不被系统杀死的保证。区分 CPU WakeLock 与屏幕常亮，默认锁… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.12 厂商后台限制：在被控端提供说明性引导，并提供跳转到系统电池优化设置页的入口（用户手动设置… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.13 尊重 FLAG_SECURE、安全键盘、DRM 和应用捕获策略，不尝试绕过受保护内容。 | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 7.14 不默认申请麦克风采集、全局悬浮窗、无关文件访问等权限。内部音频所需 RECORD_AUD… | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/capture/ScreenShareService.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt、android/app/src/main/AndroidManifest.xml | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 8.1 优先 LAN 局域网直连，其次公网 P2P，最后 TURN Relay 中继兜底。 | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | ICE与自建TURN候选，未完整验证LAN优先 |
+| 8.2 使用 ICE 探测、候选选择与连接恢复实现优先策略，可提前准备中继候选，不把所有网络都能… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 持续采集/ICE restart存在，全部路径切换未测 |
+| 8.3 配置自建 STUN、TURN UDP 及必要的 TURN TCP/TLS 备选，说明后两… | 已实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 8.4 依据真实选中候选对和网络信息显示路径，不简单把所有 host candidate 标成局… | 已实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 实际选中候选关联，非relay显示P2P，未证实LAN则不标LAN |
+| 8.5 视频初始目标约 720p、30fps，按设备、网络和温度调整；60fps 为可选能力（P… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 按比例长边1280/30fps，未实现温度驱动调整，60fps未授权 |
+| 8.6 动态调整码率、分辨率和必要时帧率，避免旧帧积压。声音开启时将音频带宽纳入整体拥塞管理，不… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | BWE/屏幕RTP预设及保帧率，新最大应用上限取消；完整动态质量策略缺口 |
+| 8.7 编解码和网络处理不阻塞主线程，控制队列有时效和长度限制，停止操作优先。 | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 纹理辅助线程、控制专用PC/时效/队列限制；连续手势实时输入未实现 |
+| 8.8 可查看实际帧率、码率、RTT、丢包、连接路径和编解码器。RTT 不冒充完整的操作到画面反… | 已实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 9.1 区分临时断网、信令掉线、ICE 失败、媒体异常、采集被系统终止和用户主动停止。 | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 9.2 临时 disconnected 或网络切换时显示“正在重连”，保留仍有效的采集，不直接结… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 9.3 仅信令断开而媒体和控制正常时，维持连接并独立恢复信令。 | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 仅信令恢复维持有效媒体，原租约/时钟门禁，0.3.5独立链路未实测 |
+| 9.4 实现等待短暂恢复、信令重连、ICE Restart、必要时重建 PeerConnecti… | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 媒体/控制独立ICE restart，完整PeerConnection重建和媒体停滞检测未实现 |
+| 9.5 保留原控制者认证与租约，不要求重新输入配对凭据，不让其他控制者抢占。ICE 协商凭据的更… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 9.6 默认重连宽限期 120 秒，可配置，采用有限退避与随机抖动。超过期限明确失败并结束旧会话… | 已知偏离 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 用户改15秒，有限抖动，共用独立单调截止 |
+| 9.7 重连中暂停远程操作、丢弃积压输入；恢复后先同步新画面、方向、几何版本及音频开关状态，再恢… | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 恢复门禁和静音同步有实现，完整方向同步仍缺 |
+| 9.8 本机停止、授权撤销或采集已失效后不得自动重新接管；需要系统授权时如实提示。 | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 9.9 静音状态必须跨重连保持，重建媒体链路不得默认重新发送声音。 | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | ICE恢复保静音，完整PeerConnection重建未实现 |
+| 10.1 默认控制端远程画面方向跟随被控端实际共享画面。远端横屏则控制端 Activity 请求横… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 初始方向请求有接线，运行旋转未完整同步 |
+| 10.2 不能只将横屏画面缩在竖屏窗口中留下大片上下黑边；不能拉伸或压扁视频。 | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 初始画面等比适配，连续旋转仍缺 |
+| 10.3 不同设备宽高比造成的必要留边允许存在，默认完整显示而不裁掉可操作区域。 | 已实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 按真实初始比例采集/显示，不裁掉区域 |
+| 10.4 会话、WebRTC 和录屏生命周期与 Activity/Compose 页面解耦；页面重… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 会话独立，渲染器释放/重绑；全旋转组合未验证 |
+| 10.5 采集尺寸变化时调整现有采集显示和 Surface，正确处理方向元数据，避免重复旋转或错误… | 未实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 动态采集Surface/尺寸同步尚未接入 |
+| 10.6 切换期间同步尺寸、显示区域和坐标映射，暂停触控并丢弃旧方向事件。 | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 几何版本校验存在，旋转回调生产新几何未完成 |
+| 10.7 悬浮按钮重新约束到可见边界，退出控制恢复本机方向策略。 | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 菜单重约束/断开恢复方向，全部旋转未测 |
+| 10.8 大屏、多窗口等系统环境可能忽略方向请求；此时保证比例与触控正确，明确限制，不声称已强制旋… | 部分实现 | android/app/src/main/java/com/simplerc/app/MainActivity.kt、android/app/src/main/java/com/simplerc/app/geometry/OrientationCoordinator.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 比例保留，系统多窗口行为需验证 |
+| 11.1 不假设两端分辨率、宽高比、像素密度、显示缩放或系统栏一致。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.2 禁止直接发送控制端原始像素坐标，也不能仅用双方屏幕宽高比换算。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.3 明确区分 dp、触摸 px、视频显示区域、解码帧尺寸、远端采集区域和无障碍屏幕坐标。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.4 根据控制端真实视频内容区域扣除位置偏移与留边，逆向处理旋转、缩放、裁剪，得到采集区域内的… | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.5 被控端根据对应采集区域在屏幕中的实际位置和尺寸映射为触控坐标。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.6 状态栏、导航栏、刘海、挖孔和边到边布局以实际几何数据处理，不无条件重复扣除系统栏高度。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.7 留边点击不转发。弱网降低编码分辨率时，触控位置不得变化，不能将编码像素当物理屏幕像素。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.8 旋转、折叠屏、窗口变化、键盘弹出收起时核对实际几何信息，不假定所有事件都改变采集尺寸。 | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 初始几何存在，旋转/折叠/窗口变化运行同步缺口 |
+| 11.9 几何数据带版本并与视频同步；未同步完成时暂停触控，过期事件拒绝执行。 | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 版本/旧事件拒绝存在，视频变化生产新版本缺口 |
+| 11.10 点击、长按、滑动完整路径使用统一变换。无效尺寸、异常值和越界坐标拒绝执行，不能强行夹到边… | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.11 滑动路径规则：起点落在留边或内容区外，整个手势忽略，不转发；手势进行中某个点越出内容区，… | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 越界整段拒绝，不夹边；界面取消提示未完整 |
+| 11.12 首版不默认提供视频缩放和平移；以后增加时必须纳入逆变换后才能开放触控。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 11.13 提供可手动开启的几何诊断显示（P2）：实际内容边界、采集尺寸、方向、版本和触点。默认关闭… | 未实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | P2几何诊断叠层未授权 |
+| 12.1 支持点击、长按、滑动，以及返回、桌面、最近任务。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 点击/长按/完整滑动/三键，有部分实机回执 |
+| 12.2 使用无障碍手势及系统全局操作，检查执行返回值和取消结果，不以消息已发送当作操作成功。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 12.3 成功连接且可操作后，控制端显示可拖动悬浮按钮，点击展开或收起三大金刚键。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 12.4 按钮位于应用内部，不默认申请全局悬浮窗权限；按钮操作不能穿透到远端。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 12.5 重连时禁用操作，断开时隐藏，旋转后不能越界。 | 部分实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 菜单控制门禁/边界有接线，0.3.5新菜单未实测 |
+| 12.6 指令通过 DataChannel 传输，按性质设计可靠性、顺序和过期策略，禁止断线后补发… | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 12.7 不宣称能使用普通无障碍权限完成任意游戏、多指实时操控、压感或底层输入注入；扩展前明确限制… | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 13.1 基础交互：点击远端编辑框 → 被控端获得真实输入焦点 → 被控端键盘弹出 → 控制端看到… | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 13.2 分别诊断点击是否准确送达、输入焦点是否正确、远端键盘是否实际出现、采集画面是否包含键盘。 | 部分实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 实际回执可诊断执行，完整焦点/IME链路未遍历 |
+| 13.3 优先真实手势点击，支持的编辑节点可以辅助点击或 ACTION_FOCUS；无障碍焦点不等… | 部分实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 采用真实手势，不读取节点，不做辅助ACTION_FOCUS |
+| 13.4 不用控制端本地键盘弹出来冒充远端问题已解决，不认为服务虚拟 View 的 showSof… | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 13.5 检查本程序是否错误隐藏键盘，但不能随意覆盖用户或其他服务设置。自动模式不是立即强制显示。 | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 13.6 使用 Compose WindowInsets 处理控制端本机系统栏、刘海和本地 IME… | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 13.7 远端键盘变化以实际远端画面、采集回调和同步几何信息为准。完整屏幕共享时键盘出现不一定改变… | 部分实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 不误扣键盘区域，动态捕获变化同步缺口 |
+| 13.8 两端键盘独立管理，只有显示区域或采集几何实际变化才更新映射，确保远端键盘区域始终可按正确… | 部分实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 本机与远端独立，完整旋转/IME组合未验证 |
+| 13.9 可补充本地输入后发送文字（P2），但不能代替远端键盘。ACTION_SET_TEXT 会… | 未实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | P2本地文字注入未授权 |
+| 13.10 特殊编辑器、密码框、安全键盘和受保护内容有限制时明确反馈，不绕过、不记录输入内容。 | 已实现 | android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt、android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.1 支持将被控手机允许采集的内部媒体声音传到控制端，通过 AudioPlaybackCapt… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.2 取得必要的 RECORD_AUDIO 与 MediaProjection 授权，遵守音源… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.3 被控端本机保留允许/禁止音频共享的控制权；控制端不能绕过这个许可。 | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.4 控制端提供独立“声音开启/静音”开关。音频故障或权限拒绝不影响正常视频与触控。 | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.5 静音必须停止该会话的音频内容传输，不得仅将本地音量设为零，也不得靠持续发送静音帧冒充停传… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.6 静音操作先立即停止控制端播放并清空待播放缓存，再可靠通知被控端停止内部音频采集、编码和音… | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 本地停播、独立通道请求、脱轨/recording停止；全部缓冲行为未验证 |
+| 14.7 通过所选 WebRTC 实现支持的音频发送管理方式做到真实停传，不能仅假定 track.… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.8 只有收到远端停传确认后才显示“音频已停传”。无法确认时显示“本地已静音，远端停传待确认”… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.9 静音不能撤回已经发送到网络中的数据；双方丢弃已有待发送或待播放音频，确认后停止产生新的音… | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 停传有0.3.4字节计数证据，所有待发/待播缓存组合未验证 |
+| 14.10 恢复声音时重新启用音频链路并处理音画同步，不重新配对、不重启屏幕共享、不影响触控。不回放… | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 接回sender不重录屏，听感/音画同步未确认 |
+| 14.11 保存当前会话的声音选择，重连或 PeerConnection 重建后先同步状态，静音时不… | 部分实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | ICE恢复同步静音，完整PC重建未实现 |
+| 14.12 内部音频不能采集时提示原因，不自动切换到麦克风录音，也不修改被控手机自己的扬声器音量。 | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 14.13 日志不保存录音内容，只提供必要的权限、链路、采集状态及音频发送统计。实际停传和兼容性由我… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、webrtc-patch/ | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 15.1 显示未启用、权限缺失、待机在线、待连接、等待确认、连接中、已连接、重连中、已停止、错误等… | 已实现 | android/app/src/main/java/com/simplerc/app/model/AppState.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 15.2 活跃会话显示对端 ID、时长、路径、简要质量和声音状态，不暴露验证码与令牌。 | 部分实现 | android/app/src/main/java/com/simplerc/app/model/AppState.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt | 通知有实际质量与声音，对端公开ID/会话时长未完整 |
+| 15.3 系统通知按平台规则展示共享状态与本机停止入口；不要将页面状态条与系统状态栏混为一谈。 | 已实现 | android/app/src/main/java/com/simplerc/app/model/AppState.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 15.4 用显式状态机统一管理角色、凭据计时、服务、会话锁、网络恢复及音频状态。 | 部分实现 | android/app/src/main/java/com/simplerc/app/model/AppState.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt | 运行协调器统一主要动作，辅助旧模型有残留 |
+| 15.5 处理重复点击、快速切换角色、乱序回调、过期响应、服务端重启、租约失效和资源清理，防止界面… | 部分实现 | android/app/src/main/java/com/simplerc/app/model/AppState.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt | 回调隔离、终止清理已接线，所有竞态/重启组合未测 |
+| 15.6 等待本机确认、握手、恢复等过程设置合理超时（初始默认值见附录），释放时检查会话归属。 | 已实现 | android/app/src/main/java/com/simplerc/app/model/AppState.kt、android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/service/ForegroundSupport.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 16.1 完整 Android 项目、Go 后端、数据库迁移、配置模板、Coturn 示例及 Do… | 部分实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 可编译工程齐全，STATE明确缺口 |
+| 16.2 环境搭建、依赖与许可证、权限用途、项目结构、状态机、消息协议、错误码、构建及部署文档，以… | 已实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 16.3 明确需要用户提供的服务器地址、域名、证书等；不把示例地址当成部署成功。 | 已实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 16.4 构建成功时提供 APK、版本号、构建变体和产物位置；未构建成功则说明阻塞点，不虚构文件。 | 已实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 16.5 提供问题反馈模板：两端手机型号、Android 版本、软件版本、双方角色、网络类型、步骤… | 已实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 16.6 提供人工双机验收清单，不自动执行，至少包括： | 已实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+| 16.7 每次修复交付修改说明、构建状态、剩余限制和我需要复查的步骤，不宣称未经执行的测试通过。 | 已实现 | docs/STATE.md、docs/BUILDING.md、docs/ACCEPTANCE_CHECKLIST.md、docs/REVIEW_GUIDE.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
+
+## 阶段与附录
+
+| 条款 | 状态 | 文件/边界 |
 | --- | --- | --- |
-| 三.2 普通页面不可滚动 | 已知偏离 | 用户要求允许滚动；MainScreen 整页滚动；远程画面不滚动 |
-| 三.4 小屏/横屏/IME | 已实现 | MainScreen 外层单一滚动、取消 weight；已编译，手机显示待复测 |
-| 四.3 保存不等于在线/五.3 持久化 | 已实现 | SecretStore.putAll、SessionCoordinator、AppState；服务器 ACK 单独表示 |
-| 五.9–12 随机刷新与模式保持 | 已实现 | SessionCoordinator：读取持久模式，随机 ACK 后才启动计时器，失败不回退 |
-| 七.5 前台服务与采集顺序 | 已实现 | StandbyService/ScreenShareService 在进入前台后分别注册/采集 |
-| 九.6/十五.6 截止与有限重连 | 部分实现 | SessionCoordinator 建连/确认/媒体超时、generation；完整媒体分级重建仍有缺口 |
-| 二.5 原生媒体协商 | 已实现 | SessionMedia 的 onCreateSuccess/onSetSuccess 和 ICE 队列；已编译待双机 |
-| 一.9–10 先分析再修复 | 已实现 | BUG_FIX_0.3.3 区分已确认缺陷和缺少手机证据的推测 |
-| 十六.4 本地 APK | 已实现 | 本地 0.3.3 命名 APK；服务器只更新后端，未上传 APK |
+| 十七阶段 0 | 已实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 1 | 已实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 2 | 已实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 3 | 已实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 4 | 部分实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 5 | 已实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 6 | 部分实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 十七阶段 7 | 已实现 | docs/PHASE_REPORTS.md、docs/STATE.md；历史阶段与本轮修复分别报告，阶段4动态旋转与阶段6完整重建仍有缺口 |
+| 附录全部默认值 | 部分实现 | AppConfig.kt、server/internal/config/config.go、DECISIONS.md；15秒覆盖120秒，主要值集中；全部服务计数/回收尚未配置化 |
 
-状态仅使用：已实现、部分实现、未实现、已知偏离。Android、Go 与部署配置已构建验证，但所有手机功能仍未实机验证；2026-10-13 的最终状态以 `STATE.md` 为准。
+## 用户修订对照
 
-## 零、总原则（1–4）
-
-| 条款 | 状态 | 实现/证据 |
+| 修订 | 状态 | 实现文件/边界 |
 | --- | --- | --- |
-| 0.1 优先级和取舍记录 | 已实现 | `docs/DECISIONS.md` |
-| 0.2 P0/P1/P2 分级 | 部分实现 | P2 未做；P0/P1 多项仅基础组件，见 STATE |
-| 0.3 不确定项如实报告 | 已实现 | `PHASE_REPORTS.md`、`BUGS.md` |
-| 0.4 每次本机确认、无无人值守 | 已实现 | `SessionCoordinator`、`MainScreen` 确认弹窗、系统录屏授权 |
-
-## 一、开发与协作（1–15）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 1.1 阶段流程 | 已知偏离 | 用户后续授权阶段 2–7 连续执行；逐阶段提交 |
-| 1.2 不自动测试 | 已实现 | 无测试源、未运行测试 |
-| 1.3 不操作设备/启动服务 | 已实现 | 未使用 ADB、模拟器、容器或服务 |
-| 1.4 仅允许检查 | 已实现 | 只做静态检查和一次 assembleDebug 尝试 |
-| 1.5 构建不称测试 | 已实现 | 文档一致 |
-| 1.6 人工双机清单 | 已实现 | `ACCEPTANCE_CHECKLIST.md` |
-| 1.7 项目记忆文档 | 已实现 | STATE/DECISIONS/FEASIBILITY |
-| 1.8 阶段报告 | 已实现 | `PHASE_REPORTS.md` |
-| 1.9–1.13 反馈、手机授权、ADB边界 | 已实现 | 流程文档；本轮未接触手机 |
-| 1.14 不购买/部署/上架 | 已实现 | 仅模板，无外部写入或费用 |
-| 1.15 关键决策先确认 | 已实现 | 音频方案与构建授权已记录 |
-
-## 二、工具和技术栈（1–12）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 2.1 Kotlin/Compose/Coroutines/StateFlow/ViewModel | 已实现 | `android/app` |
-| 2.2 Wrapper/JDK/SDK/Git | 部分实现 | Wrapper/Git 已有；JDK/SDK 环境缺失 |
-| 2.3 固定兼容版本/版本目录 | 已实现 | `libs.versions.toml`、BUILDING |
-| 2.4 min Android 10 | 已实现 | app Gradle minSdk 29 |
-| 2.5 原生 WebRTC | 部分实现 | 标准 AAR与工厂已有；轨道未接线 |
-| 2.6 MediaProjection/Accessibility/AudioPlaybackCapture | 部分实现 | 前两者组件已写；音频仅接口/补丁规范 |
-| 2.7 H.264硬件优先和降级 | 部分实现 | 默认硬件工厂；编解码排序未实现 |
-| 2.8 Go/Postgres/Redis/迁移 | 已实现 | `server/internal/api/server.go`、迁移、Redis 租约/限流 |
-| 2.9 自建 Coturn/部署说明 | 已实现 | `deploy/`、DEPLOYMENT |
-| 2.10 HTTPS/WSS/短期 TURN | 已实现 | 公网 Nginx、WSS、`turnCredentials` HMAC 签发 |
-| 2.11 在线信令、媒体直连 | 已实现 | `SessionCoordinator`、`SessionMedia`、服务端信令中继 |
-| 2.12 工程约定 | 部分实现 | 结构、ID、debug签名、版本、中文已实现；关键参数部分配置化 |
-
-## 三、单页界面（1–8）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 3.1–3.3 单Activity/点击切换/不滚动 | 已实现 | MainActivity、MainScreen |
-| 3.4 响应小屏/方向/字体/IME | 部分实现 | 紧凑布局与 imePadding；未实机验证 |
-| 3.5 控制端字段/会话画面/导航/声音 | 部分实现 | 输入字段和导航组件；真实画面/连接未接线 |
-| 3.6 被控模式/凭据/启停/音频许可 | 部分实现 | UI存在，真实凭据未接线 |
-| 3.7 验证码遮挡/复制 | 部分实现 | 遮挡已有；复制未实现 |
-| 3.8 顶部状态与通知 | 已实现 | Header、StandbyService |
-
-## 四、角色与条件（1–7）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 4.1 必要权限才启用 | 已实现 | MainViewModel |
-| 4.2 控制端不生成被控凭据 | 已实现 | 分离角色，未生成 |
-| 4.3 自定义保存不等于在线 | 部分实现 | 状态语义有，保存UI未接线 |
-| 4.4 待机/共享双服务 | 已实现 | `StandbyService`、`ScreenShareService`、`SessionCoordinator`、`SessionMedia` |
-| 4.5 切换角色终止会话 | 部分实现 | 停待机；活动会话确认弹窗未实现 |
-| 4.6 重开定义 | 部分实现 | 冷启动默认；完整进程/会话尚无 |
-| 4.7 冷启动不恢复 | 已实现 | 非持久状态、START_NOT_STICKY |
-
-## 五、ID 与验证码（1–15）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 5.1–5.2 无登录+设备认证 | 部分实现 | Keystore身份；服务注册未接线 |
-| 5.3–5.4 固定凭据持久/唯一 | 部分实现 | 加密存储和DB唯一约束；API/UI未接线 |
-| 5.5 占用查询认证限流及泄露说明 | 部分实现 | 限流组件/决策；接口未实现 |
-| 5.6–5.7 code规则/ID规范 | 已实现 | CredentialRules |
-| 5.8 防囤积/180天/保留词 | 部分实现 | DB唯一、索引、基础保留词；回收任务未实现 |
-| 5.9–5.12 随机刷新/暂停/原子替换 | 已实现 | `SessionCoordinator` 300 秒任务、Redis TTL 与旧组合删除 |
-| 5.13 密钥丢失无找回 | 部分实现 | 文档语义；服务回收未实现 |
-| 5.14 Argon2id/本机加密/PAKE评估 | 已实现 | password.go、SecretStore、D-017 |
-| 5.15 修改撤销令牌/无泄密 | 部分实现 | generation字段；撤销流程未接线 |
-
-## 六、单控制者与安全（1–9）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 6.1–6.2 单租约/归属释放 | 已实现 | Redis lease Lua |
-| 6.3 统一失败提示 | 部分实现 | 错误码文档；处理路由未实现 |
-| 6.4 常量时间和统一耗时 | 部分实现 | 哈希比较常量时间；固定下限/抖动未接线 |
-| 6.5 多维限流/退避 | 部分实现 | 计数器组件；目标退避逻辑未完成 |
-| 6.6 本机确认 | 已实现 | 本机弹窗、MediaProjection 授权、服务端 30 秒超时 |
-| 6.7 身份/会话/指纹/指令校验 | 部分实现 | 控制校验；WebRTC指纹绑定未完成 |
-| 6.8 共享状态/停止撤销 | 部分实现 | 通知停止；令牌撤销未接线 |
-| 6.9 不隐蔽/不绕过 | 已实现 | UI与权限设计 |
-
-## 七、Android 权限和生命周期（1–14）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 7.1–7.3 无障碍检查/受限设置/最小权限 | 已实现 | AccessibilityStatus、配置、UI |
-| 7.4 权限分离 | 已实现 | Manifest无音频权限，视频独立 |
-| 7.5 FGS声明与顺序 | 部分实现 | 声明/先startForeground；Activity授权入口未接线 |
-| 7.6–7.8 token单用/旋转复用/onStop | 部分实现 | 服务防重用/onStop；VirtualDisplay未接线 |
-| 7.9 整屏与单应用识别 | 部分实现 | 文档决策；运行时识别未实现 |
-| 7.10 通知停止入口 | 已实现 | 待机和共享通知均有停止 PendingIntent |
-| 7.11 锁屏安全停止 | 未实现 | 文档状态机有，接收处理未实现 |
-| 7.12 厂商后台引导 | 已实现 | UI按钮和说明 |
-| 7.13 尊重受保护内容 | 已实现 | 无绕过代码 |
-| 7.14 不申请无关权限/不麦克风 | 已实现 | Manifest及音频隔离 |
-
-## 八至十五、媒体、网络、控制和状态
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 8.1–8.4 ICE优先/路径 | 部分实现 | IcePath、TURN模板；stats关联未实现 |
-| 8.5–8.7 720p30/动态调整/线程队列 | 未实现 | 仅架构，无发送策略 |
-| 8.8 统计 | 部分实现 | 规范和音频判据；采集显示未实现 |
-| 9.1–9.9 弱网恢复 | 部分实现 | RecoveryStateMachine；未接PeerConnection |
-| 10.1–10.8 方向 | 部分实现 | coordinator和几何；Surface/会话未接线 |
-| 11.1–11.12 坐标 | 已实现 | GeometryMapper/ControlValidator；未实机验证 |
-| 11.13 P2诊断层 | 未实现 | 按要求未获授权 |
-| 12.1–12.2 手势/三键/结果 | 部分实现 | Accessibility方法；回执传输未接线 |
-| 12.3–12.5 应用内导航 | 部分实现 | 组件有，拖动与会话显示未接线 |
-| 12.6 DataChannel策略 | 已实现 | `SessionMedia` 可靠有序通道、时效/序号/版本校验 |
-| 12.7 能力限制说明 | 已实现 | 验收和协议文档 |
-| 13.1–13.8 远端键盘/Insets | 部分实现 | 真实手势策略和imePadding；端到端未验证 |
-| 13.9 P2本地文字 | 未实现 | 按要求未获授权 |
-| 13.10 安全输入限制 | 已实现 | 不读节点/不绕过 |
-| 14.1–14.13 内部音频/静音 | 部分实现 | 接口/状态机/补丁规范；AAR未构建，运行时不可用 |
-| 15.1 状态集合 | 部分实现 | 阶段1基础状态；完整会话状态未接线 |
-| 15.2 活跃会话信息 | 部分实现 | 会话状态、路径和音频状态；对端公开 ID/时长/质量未完整 |
-| 15.3 系统通知 | 部分实现 | 待机和共享基础通知 |
-| 15.4 显式状态机 | 部分实现 | App/Recovery/Audio分立，未统一 |
-| 15.5 竞态和清理 | 部分实现 | 校验/START_NOT_STICKY；端到端未验证 |
-| 15.6 超时/归属释放 | 部分实现 | 配置和租约组件；业务接线未完成 |
-
-## 十六、交付（1–7）与十七、阶段
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 16.1 Android/Go/迁移/Compose | 部分实现 | 项目存在但关键链路未完成 |
-| 16.2 文档集合 | 已实现 | docs目录 |
-| 16.3 用户需提供部署参数 | 已实现 | DEPLOYMENT |
-| 16.4 APK与构建状态 | 已实现 | debug APK 已构建并记录产物路径；未实机验证 |
-| 16.5 问题模板 | 已实现 | ACCEPTANCE_CHECKLIST |
-| 16.6 人工验收清单 | 已实现 | ACCEPTANCE_CHECKLIST |
-| 16.7 修复交付要求 | 已实现 | PHASE_REPORTS约定 |
-| 17.0 阶段0核查 | 已实现 | FEASIBILITY |
-| 17.1–17.7 阶段交付 | 部分实现 | 报告和提交齐全；阶段2–6多项仅部分实现 |
-| 附录全部默认值 | 部分实现 | AppConfig涵盖主要超时；服务限流/回收配置未完整集中 |
-
-## 2026-10-13 阶段 5 状态修订（本节优先于上方早期快照）
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 2.2 Wrapper/JDK/SDK/Git | 已实现 | Windows JDK/SDK及 WSL2 JDK/SDK 均已安装；本轮使用 WSL2 构建 |
-| 2.5–2.6 原生 WebRTC/AudioPlaybackCapture | 已实现 | 本地补丁 AAR、`WebRtcEngine.kt`、`SessionMedia.kt` |
-| 3.5 控制端声音开关 | 已实现 | `MainScreen.kt`、`SessionMedia.setRemoteAudioEnabled` |
-| 7.4 音视频权限分离 | 已实现 | `MainActivity.kt`；拒绝 RECORD_AUDIO 后继续申请屏幕捕获 |
-| 7.5 FGS 类型与顺序 | 已实现 | Manifest 与 `ScreenShareService.kt` 动态类型 |
-| 7.6 授权 Intent 单用 | 已实现 | 视频 capturer 创建投影，音频读取同一实例 |
-| 7.14 RECORD_AUDIO 仅作播放捕获 | 已实现 | `WebRtcEngine.kt` 只构造 AudioPlaybackCapture，未创建麦克风源 |
-| 14.1–14.13 内部音频/独立静音 | 已实现 | 补丁 AAR、发送/接收轨道、sender 脱轨、释放、ACK 状态；待双机验证 |
-| 16.4 APK | 已实现 | 0.3.0 debug APK 已编译并记录校验值 |
-| 17.5 阶段 5 | 已实现 | 真实补丁、AAR、许可证/校验值和接入均完成；待双机验证 |
-
-## 2026-10-13 实测反馈修订
-
-| 条款 | 状态 | 实现/证据 |
-| --- | --- | --- |
-| 5.3 自定义凭据只在明确修改时更新 | 已实现 | `SessionCoordinator.registerFixed/publishCurrentCredentials` |
-| 5.4 固定 ID 唯一和同设备替换 | 已实现 | 服务端固定 ID 事务替换与 `ID_UNAVAILABLE` |
-| 5.7 ID/验证码规则 | 已实现 | `AppConfig`、`CredentialRules`、服务端 `validID`/code 校验 |
-| 5.9–5.12 随机刷新与模式切换 | 已实现 | 固定模式取消/阻断计时器；随机切换释放固定注册 |
-| 6.5 验证失败限流/退避 | 已实现 | 仅 CONNECT 失败累计，服务端返回等待秒数，客户端倒计时 |
-| 9.6 有限重连 | 已实现 | 1–15 秒指数退避、随机抖动、120 秒截止、明确操作按钮 |
-| 15.6 等待超时 | 已实现 | WebSocket 与凭据发布 20 秒，重连 120 秒 |
+| 手机授权与结束测试 | 已实现 | REQUIREMENTS.md、DEVICE_TEST_0.3.4.md；结束后不继续ADB |
+| 后端更新、APK不上传 | 已实现 | server/internal/api/server.go、STATE.md；服务器旧APK哈希保持 |
+| 15秒截止、明确重试/停止 | 已实现 | SessionCoordinator.kt、server/config；0.3.4候选有实机结果 |
+| 二次元简约/无障碍选项卡门禁/通知按钮 | 已实现 | MainScreen.kt、AccessibilityStatus.kt、MainActivity.kt |
+| 后台保活/前台与共享不自动息屏 | 已实现 | ForegroundSupport.kt、ControllerService.kt、ScreenShareService.kt、MainActivity.kt；厂商不保证永不杀 |
+| 溢出自适应滚动、导航菜单声音 | 已实现 | MainScreen.kt、FloatingNavigation.kt；0.3.5新菜单未实测 |
+| 本机关闭音频双端同步 | 已实现 | SessionMedia.kt、MainViewModel.kt；0.3.4计数与UI证据 |
+| RTT/丢包/类型放通知，控制画面隐藏 | 已实现 | ForegroundSupport.kt、MainScreen.kt；0.3.5新UI仅编译 |
+| 触控与视频独立连接 | 已实现 | ControlTransport.kt、SessionMedia.kt、server/api；不同PeerConnection/ICE/SCTP，仍共享物理网络，未实机 |
+| 完整实际诊断、静止/滑动区分 | 已实现 | QualityStats.kt、MediaDiagnostics.kt、VIDEO_DIAGNOSTICS.md；缺字段未知，未采集新实机数据 |
+| H.264 profile匹配、VP8兼容回退 | 已实现 | WebRtcEngine.kt、SessionMedia.kt；保留支持列表/native协商，实际codec/profile显示于stats |
+| 屏幕源/默认与新策略切换 | 已实现 | WebRtcEngine.kt、MainViewModel.kt、MainScreen.kt、server/api；下一会话生效 |
+| 码率合理默认及取消6Mbps上限 | 已实现 | AppConfig.kt、SessionMedia.kt、DECISIONS D-041及最大修订；2Mbps起始/0.3Mbps最小/max=null |
+| 商业级流畅度 | 部分实现 | VIDEO_DIAGNOSTICS.md；卡顿根因待动态统计，不承诺达到商业软件水平 |
