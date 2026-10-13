@@ -26,3 +26,12 @@
 - 未完成项：MediaProjection Activity 授权入口、ScreenCapturerAndroid 到 PeerConnection 的完整接线、SDP/ICE 业务路由和远端渲染 UI 尚未接通，因此视频会话不能实际建立。
 - 新增决策：可靠控制与短寿命滑动分通道；消息不是成功回执；授权 Intent 单次消费。
 - 已知风险：标准 AAR API 尚未经编译核对；服务当前只持有 projection，VirtualDisplay 由后续 capturer 接线负责。
+
+## 阶段 4：方向、坐标、输入法与导航
+
+- 完成内容：实际内容矩形到归一化坐标的逆变换、0/90/180/270 度处理、远端捕获区域到屏幕映射、全路径越界取消、几何版本、方向请求协调器、应用内展开式三键导航组件、输入法边界说明。
+- 修改范围：`geometry/`、`ui/FloatingNavigation.kt`、`docs/GEOMETRY.md`。
+- 构建状态：未构建，JDK/Android SDK 不可用。
+- 未完成项：组件尚未接入真实远程视频页面；方向/Surface resize、导航拖动和输入焦点辅助未形成端到端功能。
+- 新增决策：编码分辨率不参与触控；路径任一点越界取消；不读取节点内容；不强制本地键盘。
+- 已知风险：多窗口可能忽略方向请求；真实系统栏/折叠屏/IME 几何需双机验证。
