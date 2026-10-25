@@ -1,0 +1,108 @@
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/ScreenCapturerAndroid.java b/stream-webrtc-android/src/main/java/org/webrtc/ScreenCapturerAndroid.java
+index 231d507..c80ecd0 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/ScreenCapturerAndroid.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/ScreenCapturerAndroid.java
+@@ -18,6 +18,8 @@ import android.hardware.display.VirtualDisplay;
+ import android.media.projection.MediaProjection;
+ import android.media.projection.MediaProjectionManager;
+ import android.view.Surface;
++import android.os.Build.VERSION;
++import android.os.Build.VERSION_CODES;
+ import androidx.annotation.Nullable;
+ 
+ /**
+@@ -43,6 +45,7 @@ public class ScreenCapturerAndroid implements VideoCapturer, VideoSink {
+   private int width;
+   private int height;
+   @Nullable private VirtualDisplay virtualDisplay;
++  @Nullable private Surface captureSurface;
+   @Nullable private SurfaceTextureHelper surfaceTextureHelper;
+   @Nullable private CapturerObserver capturerObserver;
+   private long numCapturedFrames;
+@@ -113,7 +116,7 @@ public class ScreenCapturerAndroid implements VideoCapturer, VideoSink {
+     // Let MediaProjection callback use the SurfaceTextureHelper thread.
+     mediaProjection.registerCallback(mediaProjectionCallback, surfaceTextureHelper.getHandler());
+ 
+-    createVirtualDisplay();
++    updateVirtualDisplay();
+     capturerObserver.onCapturerStarted(true);
+     surfaceTextureHelper.startListening(ScreenCapturerAndroid.this);
+   }
+@@ -134,6 +137,11 @@ public class ScreenCapturerAndroid implements VideoCapturer, VideoSink {
+           virtualDisplay = null;
+         }
+ 
++        if (captureSurface != null) {
++          captureSurface.release();
++          captureSurface = null;
++        }
++
+         if (mediaProjection != null) {
+           // Unregister the callback before stopping, otherwise the callback recursively
+           // calls this method.
+@@ -181,17 +189,59 @@ public class ScreenCapturerAndroid implements VideoCapturer, VideoSink {
+     ThreadUtils.invokeAtFrontUninterruptibly(surfaceTextureHelper.getHandler(), new Runnable() {
+       @Override
+       public void run() {
+-        virtualDisplay.release();
+-        createVirtualDisplay();
++        updateVirtualDisplay();
+       }
+     });
+   }
+ 
+-  private void createVirtualDisplay() {
++  private void updateVirtualDisplay() {
+     surfaceTextureHelper.setTextureSize(width, height);
+-    virtualDisplay = mediaProjection.createVirtualDisplay("WebRTC_ScreenCapture", width, height,
+-        VIRTUAL_DISPLAY_DPI, DISPLAY_FLAGS, new Surface(surfaceTextureHelper.getSurfaceTexture()),
+-        null /* callback */, null /* callback handler */);
++    // Match upstream: resize can scale incorrectly before Android 12. Android 14+
++    // must retain the display because one projection grant permits one creation.
++    if (virtualDisplay == null || VERSION.SDK_INT < VERSION_CODES.S) {
++      createVirtualDisplay();
++    } else {
++      virtualDisplay.resize(width, height, VIRTUAL_DISPLAY_DPI);
++      // VirtualDisplay ignores setSurface when given the same Java Surface object.
++      // Follow upstream with a new wrapper so the resized producer is rebound.
++      replaceCaptureSurface();
++    }
++  }
++
++  private void replaceCaptureSurface() {
++    final Surface nextSurface = new Surface(surfaceTextureHelper.getSurfaceTexture());
++    try {
++      virtualDisplay.setSurface(nextSurface);
++    } catch (RuntimeException failure) {
++      nextSurface.release();
++      throw failure;
++    }
++    final Surface previousSurface = captureSurface;
++    captureSurface = nextSurface;
++    if (previousSurface != null) {
++      previousSurface.release();
++    }
++  }
++
++  private void createVirtualDisplay() {
++    if (virtualDisplay != null) {
++      virtualDisplay.release();
++      virtualDisplay = null;
++    }
++    if (captureSurface != null) {
++      captureSurface.release();
++      captureSurface = null;
++    }
++    captureSurface = new Surface(surfaceTextureHelper.getSurfaceTexture());
++    try {
++      virtualDisplay = mediaProjection.createVirtualDisplay("WebRTC_ScreenCapture", width, height,
++          VIRTUAL_DISPLAY_DPI, DISPLAY_FLAGS, captureSurface,
++          null /* callback */, null /* callback handler */);
++    } catch (RuntimeException failure) {
++      captureSurface.release();
++      captureSurface = null;
++      throw failure;
++    }
+   }
+ 
+   // This is called on the internal looper thread of {@Code SurfaceTextureHelper}.

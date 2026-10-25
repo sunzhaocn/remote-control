@@ -4,14 +4,19 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.ComponentName
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.simplerc.app.MainActivity
 import com.simplerc.app.R
 import com.simplerc.app.state.AppStateStore
+import com.simplerc.app.accessibility.RemoteControlAccessibilityService
+import com.simplerc.app.model.SessionState
+import com.simplerc.app.model.DeviceRole
 
 class StandbyService : Service() {
     private var started = false
@@ -26,9 +31,20 @@ class StandbyService : Service() {
             stopStandby()
             return START_NOT_STICKY
         }
-        if (started) return START_NOT_STICKY
+        // A queued start from the old screen must not undo a later role switch.
+        // A null intent is reserved for the system's sticky process restoration.
+        if (intent != null && AppStateStore.state.value.role != DeviceRole.CONTROLLED) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (started) return START_STICKY
+        if (!accessibilityConfigured()) {
+            AppStateStore.update { it.copy(statusDetail="无障碍权限已关闭，请重新启用被控", sessionState=SessionState.ERROR, errorMessage="ACCESSIBILITY_LOST") }
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
 
-        ServiceCompat.startForeground(
+        val foregroundStarted = runCatching { ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
             buildNotification(),
@@ -37,29 +53,48 @@ class StandbyService : Service() {
             } else {
                 0
             },
-        )
+        ) }.isSuccess
+        if (!foregroundStarted) {
+            AppStateStore.update { it.copy(sessionState=SessionState.ERROR,statusDetail="系统暂不允许后台待机，请打开应用后重试",errorMessage="FOREGROUND_START_FAILED") }
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         AppStateStore.onStandbyServiceStarted()
         started = true
         val stop=PendingIntent.getService(this,1,Intent(this,StandbyService::class.java).setAction(ACTION_STOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        work=ForegroundWork(this).also { it.start();it.observe { state -> getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_ID,SessionNotification.build(this,if(state.activeSessionId!=null)"远程共享待机服务" else "被控待机中",state,stop)) } }
+        work=ForegroundWork(this, ForegroundMode.STANDBY).also { it.start();it.observe { state -> getSystemService(android.app.NotificationManager::class.java).notify(NOTIFICATION_ID,SessionNotification.build(this,if(state.activeSessionId!=null)"远程共享待机服务" else "被控待机中",state,stop)) } }
         (application as com.simplerc.app.SimpleRcApplication).sessions.startControlled()
-        return START_NOT_STICKY
+        // Only the system may restore an already running standby service. A fresh
+        // process republishes credentials; it never restores a projection grant.
+        return START_STICKY
     }
 
     override fun onDestroy() {
         work?.close()
-        (application as com.simplerc.app.SimpleRcApplication).sessions.serviceDestroyed(com.simplerc.app.model.DeviceRole.CONTROLLED)
-        AppStateStore.onStandbyServiceStopped()
+        if (started) {
+            (application as com.simplerc.app.SimpleRcApplication).sessions.serviceDestroyed(com.simplerc.app.model.DeviceRole.CONTROLLED)
+            AppStateStore.onStandbyServiceStopped()
+        }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun stopStandby() {
-        (application as com.simplerc.app.SimpleRcApplication).sessions.stop()
-        AppStateStore.onStandbyServiceStopped()
+        if (started && AppStateStore.state.value.role == DeviceRole.CONTROLLED) {
+            (application as com.simplerc.app.SimpleRcApplication).sessions.stop()
+        }
+        if (started) AppStateStore.onStandbyServiceStopped()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun accessibilityConfigured(): Boolean {
+        // During a sticky process restart Android may rebind accessibility after
+        // onStartCommand, so checking the old in-memory service instance races it.
+        val expected = ComponentName(this, RemoteControlAccessibilityService::class.java)
+        return Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            .orEmpty().split(':').any { ComponentName.unflattenFromString(it) == expected }
     }
 
     private fun buildNotification(): Notification {

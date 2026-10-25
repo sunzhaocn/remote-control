@@ -8,9 +8,9 @@ import org.json.JSONObject
 class PeerClock {
     private val random = SecureRandom()
     private val pending = mutableMapOf<Long, Long>()
-    private var offsetMs = 0.0
-    private var uncertaintyMs = Double.POSITIVE_INFINITY
-    val ready: Boolean get() = uncertaintyMs <= 500.0
+    private val estimate = PeerClockEstimate()
+    val latestRttMs: Long? get() = estimate.latestRttMs
+    val ready: Boolean get() = estimate.ready
 
     fun ping(): JSONObject {
         val nonce = random.nextLong().and(Long.MAX_VALUE)
@@ -38,22 +38,15 @@ class PeerClock {
         val t1 = pong.optLong("receivedMs", -1)
         val t2 = pong.optLong("sentMs", -1)
         val t3 = SystemClock.elapsedRealtime()
-        val rtt = (t3 - t0) - (t2 - t1)
-        if (t1 < 0 || t2 < t1 || rtt !in 0..990) return false
-        val error = rtt / 2.0 + 5.0
-        if (error < uncertaintyMs) {
-            offsetMs = ((t1 - t0) + (t2 - t3)) / 2.0
-            uncertaintyMs = error
-        }
-        return ready
+        return estimate.accept(t0, t1, t2, t3)
     }
 
-    fun fresh(remoteElapsedMs: Long): Boolean {
-        if (!ready || remoteElapsedMs < 0) return false
-        val age = SystemClock.elapsedRealtime() - (remoteElapsedMs - offsetMs)
-        // The entire upper uncertainty bound must fit the original two-second lifetime.
-        return age >= -uncertaintyMs && age + uncertaintyMs <= 2000.0
+    fun fresh(remoteElapsedMs: Long, lifetimeMs: Long = 2000): Boolean {
+        return remainingLifetime(remoteElapsedMs, lifetimeMs) != null
     }
 
-    fun reset() { pending.clear(); offsetMs = 0.0; uncertaintyMs = Double.POSITIVE_INFINITY }
+    fun remainingLifetime(remoteElapsedMs: Long, lifetimeMs: Long = 2000,
+        nowMs: Long = SystemClock.elapsedRealtime()): Long? = estimate.remainingLifetime(remoteElapsedMs, nowMs, lifetimeMs)
+
+    fun reset() { pending.clear(); estimate.reset() }
 }

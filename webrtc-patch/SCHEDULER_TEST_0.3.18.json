@@ -1,0 +1,23 @@
+{
+  "tests": 16,
+  "passed": [
+    "capture_60hz_to_thirty_latest_and_no_idle_loop",
+    "capture_90hz_to_thirty_latest_and_no_idle_loop",
+    "capture_120hz_to_thirty_latest_and_no_idle_loop",
+    "capture_samples_latest_texture_at_deadline",
+    "capture_stall_skips_old_slots",
+    "capture_stop_cancels_wakeup_and_restart_resets_phase",
+    "capture_disabled_leaves_decoder_delivery_unchanged",
+    "capture_busy_texture_waits_for_return_without_spinning",
+    "vsync_60hz_to_even_thirty",
+    "vsync_90hz_to_even_thirty",
+    "vsync_120hz_to_even_thirty",
+    "vsync_hundred_thousand_frames_coalesce_and_idle_stops",
+    "vsync_destroy_drops_late_callback_and_recreate_is_fresh",
+    "vsync_stall_renders_once_and_skips_missed_slots",
+    "vsync_wait_telemetry_excludes_post_vsync_handler_delay",
+    "vsync_slight_lateness_cannot_create_short_catch_up_interval"
+  ],
+  "production_capture_and_renderer_scheduler_hooks_present": true,
+  "boundary": "Built AAR scheduler bytecode with deterministic Android queue stubs; no phone/GPU/presentation timing measured."
+}

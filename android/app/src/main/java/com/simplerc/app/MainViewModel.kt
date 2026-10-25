@@ -10,11 +10,13 @@ import androidx.lifecycle.AndroidViewModel
 import com.simplerc.app.accessibility.AccessibilityStatus
 import com.simplerc.app.model.DeviceRole
 import com.simplerc.app.service.StandbyService
+import com.simplerc.app.session.CaptureConsent
 import com.simplerc.app.state.AppStateStore
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     val state = AppStateStore.state
     private val sessions get() = (getApplication<Application>() as SimpleRcApplication).sessions
+    private val captureConsent = CaptureConsent()
 
     init {
         val saved=application.getSharedPreferences("video_settings",android.content.Context.MODE_PRIVATE).getString("policy","tuned")
@@ -29,9 +31,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectRole(role: DeviceRole) {
         if(role==DeviceRole.CONTROLLED && !AccessibilityStatus.isEnabled(getApplication()))return
-        if(state.value.role!=role && (state.value.activeSessionId!=null || state.value.incomingSessionId!=null))sessions.disconnect()
-        if (role == DeviceRole.CONTROLLER && state.value.standbyServiceRunning) {
-            stopStandby()
+        if (state.value.role != role) {
+            // A CONNECT can be in flight before the server has assigned a session ID.
+            sessions.stop()
+            if (state.value.standbyServiceRunning) stopStandby()
         }
         AppStateStore.selectRole(role)
         if (role == DeviceRole.CONTROLLED) sessions.loadSavedCredentials()
@@ -47,6 +50,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             accessibilityEnabled = AccessibilityStatus.isEnabled(app),
             notificationGranted = notificationGranted,
         )
+        AppStateStore.update { it.copy(
+            batteryOptimizationExempt = app.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(app.packageName),
+            backgroundRestricted = app.getSystemService(android.app.ActivityManager::class.java).isBackgroundRestricted,
+            overlayPermissionGranted = android.provider.Settings.canDrawOverlays(app),
+        ) }
+        (app as SimpleRcApplication).screenAwake.refresh()
     }
 
     fun setAudioSharingAllowed(allowed: Boolean) {
@@ -76,10 +85,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopStandby() {
         val app = getApplication<Application>()
-        app.startService(
-            Intent(app, StandbyService::class.java).setAction(StandbyService.ACTION_STOP),
-        )
         sessions.stop()
+        app.stopService(Intent(app, StandbyService::class.java))
+        AppStateStore.onStandbyServiceStopped()
     }
 
     fun connect(targetId: String, code: String) {
@@ -89,7 +97,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .putExtra(com.simplerc.app.service.ControllerService.EXTRA_CODE,code))
     }
     fun disconnect() = sessions.disconnect()
-    fun confirmIncoming(accepted: Boolean) = sessions.confirmIncoming(accepted)
+    fun confirmIncoming(accepted: Boolean, expectedSessionId: String? = state.value.incomingSessionId) =
+        sessions.confirmIncoming(accepted, expectedSessionId)
+    fun beginCaptureConsent() = captureConsent.begin(state.value.incomingSessionId)
+    fun captureConsentIsCurrent() = captureConsent.isCurrent(state.value.incomingSessionId)
+    fun finishCaptureConsent() = captureConsent.finish(state.value.incomingSessionId)
+    fun captureStartFailed(sessionId: String) {
+        if (state.value.activeSessionId == sessionId) sessions.endFailedSession("CAPTURE_START_FAILED", "屏幕采集启动失败，请重新确认共享（CAPTURE_START_FAILED）")
+    }
     fun registerFixed(id: String, code: String) = sessions.registerFixed(id, code)
     fun useRandomCredentials() = sessions.useRandomCredentials()
     fun retryControlled() { if(state.value.standbyServiceRunning)sessions.retryControlled() else startStandby() }

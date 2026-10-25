@@ -18,6 +18,8 @@ class ControlTransport(
     private var closed=false
     private var remoteReady=false
     private var started=false
+    // Native signalingState stays STABLE while createOffer/setLocalDescription are pending.
+    private var offerInFlight=false
     private val pendingIce=mutableListOf<IceCandidate>()
     private val quality=QualityStats()
     private var statsJob:Job?=null
@@ -28,6 +30,7 @@ class ControlTransport(
         val config=PeerConnection.RTCConfiguration(ice).apply {
             sdpSemantics=PeerConnection.SdpSemantics.UNIFIED_PLAN
             continualGatheringPolicy=PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            enableDscp=true
         }
         connection=engine.createPeer(config,object:PeerConnection.Observer {
             override fun onIceCandidate(candidate:IceCandidate)=dispatch {
@@ -61,10 +64,14 @@ class ControlTransport(
         if(started || closed)return
         started=true
         connection?.createDataChannel("control",DataChannel.Init().apply{ordered=true})?.let(channelReceived)
+        connection?.createDataChannel("touch-latest",DataChannel.Init().apply {
+            ordered=false
+            maxRetransmits=0
+        })?.let(channelReceived)
         offer(false)
     }
     fun restart() {
-        if(!closed && connection?.signalingState()==PeerConnection.SignalingState.STABLE) {
+        if(!closed && !offerInFlight && connection?.signalingState()==PeerConnection.SignalingState.STABLE) {
             connection?.restartIce();offer(true)
         }
     }
@@ -82,25 +89,46 @@ class ControlTransport(
         }
     }
     private fun offer(restart:Boolean) {
+        if(closed || offerInFlight)return
+        val peer=connection?:return
+        offerInFlight=true
         val constraints=MediaConstraints().apply { if(restart)mandatory.add(MediaConstraints.KeyValuePair("IceRestart","true")) }
-        connection?.createOffer(observer(created={local("CONTROL_OFFER",it)}),constraints)
+        runCatching { peer.createOffer(observer(created={local("CONTROL_OFFER",it)}),constraints) }
+            .onFailure { offerInFlight=false;fail("控制链路描述创建失败（CONTROL_SDP_CREATE_FAILED）") }
     }
     private fun local(type:String,sdp:SessionDescription) {
-        connection?.setLocalDescription(observer(set={
-            if(!send(type,JSONObject().put("sdp",sdp.description)))fail("控制链路描述发送失败（CONTROL_SDP_SEND_FAILED）")
-        }),sdp)
+        runCatching {
+            connection?.setLocalDescription(observer(set={
+                if(!send(type,JSONObject().put("sdp",sdp.description))) {
+                    offerInFlight=false
+                    fail("控制链路描述发送失败（CONTROL_SDP_SEND_FAILED）")
+                }
+            }),sdp)
+        }.onFailure { offerInFlight=false;fail("控制链路描述设置失败（CONTROL_SDP_SET_FAILED）") }
     }
     private fun remote(type:SessionDescription.Type,sdp:String,done:()->Unit) {
         remoteReady=false
-        connection?.setRemoteDescription(observer(set={
-            remoteReady=true;pendingIce.forEach { connection?.addIceCandidate(it) };pendingIce.clear();done()
-        }),SessionDescription(type,sdp))
+        runCatching {
+            connection?.setRemoteDescription(observer(set={
+                if(type==SessionDescription.Type.ANSWER)offerInFlight=false
+                remoteReady=true;pendingIce.forEach { connection?.addIceCandidate(it) };pendingIce.clear();done()
+            }),SessionDescription(type,sdp))
+        }.onFailure { offerInFlight=false;fail("控制链路描述设置失败（CONTROL_SDP_SET_FAILED）") }
     }
     private fun observer(created:(SessionDescription)->Unit={},set:()->Unit={}):SdpObserver=object:SdpObserver {
         override fun onCreateSuccess(sdp:SessionDescription)=dispatch { created(sdp) }
         override fun onSetSuccess()=dispatch(set)
-        override fun onCreateFailure(reason:String?)=dispatch { fail("控制链路描述创建失败（CONTROL_SDP_CREATE_FAILED）") }
-        override fun onSetFailure(reason:String?)=dispatch { fail("控制链路描述设置失败（CONTROL_SDP_SET_FAILED）") }
+        override fun onCreateFailure(reason:String?)=dispatch { offerInFlight=false;fail("控制链路描述创建失败（CONTROL_SDP_CREATE_FAILED）") }
+        override fun onSetFailure(reason:String?)=dispatch { offerInFlight=false;fail("控制链路描述设置失败（CONTROL_SDP_SET_FAILED）") }
     }
-    override fun close() { closed=true;ready=false;statsJob?.cancel();pendingIce.clear();connection?.close();connection?.dispose();connection=null }
+    override fun close() {
+        if(closed)return
+        closed=true;ready=false;offerInFlight=false
+        statsJob?.cancel();statsJob=null;pendingIce.clear()
+        val activeConnection=connection
+        connection=null
+        // Detach first so late callbacks and repeated close calls cannot reuse native state.
+        try { activeConnection?.close() }
+        finally { activeConnection?.dispose() }
+    }
 }

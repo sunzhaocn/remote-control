@@ -10,6 +10,8 @@ services:
       CREDENTIAL_PEPPER: ${CREDENTIAL_PEPPER:?set CREDENTIAL_PEPPER}
       TURN_REALM: ${TURN_REALM:-49.233.43.167}
       TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:?set TURN_SHARED_SECRET}
+      # Exact reverse-proxy peer address(es) as seen by the container; never trust all private networks.
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.0/8,::1/128}
     ports: ["127.0.0.1:18080:8080"]
     depends_on:
       postgres:

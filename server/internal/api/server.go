@@ -13,34 +13,33 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"simplerc/server/internal/config"
 	"simplerc/server/internal/lease"
 	"simplerc/server/internal/protocol"
 	"simplerc/server/internal/ratelimit"
-	"simplerc/server/internal/security"
 )
 
 type Server struct {
-	cfg      config.Config
-	db       *pgxpool.Pool
-	rdb      *redis.Client
-	leases   *lease.Store
-	limits   *ratelimit.Limiter
-	upgrader websocket.Upgrader
-	mu       sync.RWMutex
-	clients  map[string]*client
-	pairings map[string]string
-	sessions map[string]*session
+	cfg          config.Config
+	db           *pgxpool.Pool
+	rdb          *redis.Client
+	leases       *lease.Store
+	limits       *ratelimit.Limiter
+	upgrader     websocket.Upgrader
+	mu           sync.RWMutex
+	publishMu    sync.Mutex
+	clients      map[string]*client
+	pairings     map[string]*publishedPairing
+	pairingStore pairingRepository
+	sessions     map[string]*session
 }
 type client struct {
 	deviceID string
@@ -74,7 +73,7 @@ type confirmPayload struct {
 }
 
 func New(cfg config.Config, db *pgxpool.Pool, rdb *redis.Client) *Server {
-	return &Server{cfg: cfg, db: db, rdb: rdb, leases: lease.New(rdb, cfg.LeaseTTL), limits: ratelimit.New(rdb), upgrader: websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }, ReadBufferSize: 4096, WriteBufferSize: 4096}, clients: map[string]*client{}, pairings: map[string]string{}, sessions: map[string]*session{}}
+	return &Server{cfg: cfg, db: db, rdb: rdb, leases: lease.New(rdb, cfg.LeaseTTL), limits: ratelimit.New(rdb), pairingStore: &storedPairings{db: db, rdb: rdb}, upgrader: websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }, ReadBufferSize: 4096, WriteBufferSize: 4096}, clients: map[string]*client{}, pairings: map[string]*publishedPairing{}, sessions: map[string]*session{}}
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -179,66 +178,24 @@ func (s *Server) webSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error {
+	s.mu.RLock()
+	current := s.clients[c.deviceID] == c
+	s.mu.RUnlock()
+	if !current {
+		return errors.New("SESSION_INVALID")
+	}
 	switch env.Type {
 	case "REGISTER_RANDOM", "REGISTER_FIXED":
 		var p pairingPayload
 		if json.Unmarshal(env.Payload, &p) != nil || !validID(p.ID) || len(p.Code) < 8 || len(p.Code) > 32 || strings.IndexFunc(p.Code, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }) >= 0 {
 			return errors.New("INVALID_REQUEST")
 		}
-		hash, err := security.HashCode(p.Code, s.cfg.CredentialPepper)
-		if err != nil {
-			return errors.New("SERVER_ERROR")
+		if env.Type == "REGISTER_FIXED" && len(p.Code) < 12 {
+			return errors.New("INVALID_REQUEST")
 		}
-		if env.Type == "REGISTER_FIXED" {
-			if len(p.Code) < 12 || len(p.Code) > 32 {
-				return errors.New("INVALID_REQUEST")
-			}
-			_, _ = s.db.Exec(r.Context(), `DELETE FROM fixed_ids WHERE last_online_at < now() - interval '180 days'`)
-			var owner string
-			lookupErr := s.db.QueryRow(r.Context(), `SELECT device_id::text FROM fixed_ids WHERE normalized_id=$1`, p.ID).Scan(&owner)
-			if lookupErr == nil && owner != c.deviceID {
-				return errors.New("ID_UNAVAILABLE")
-			}
-			if lookupErr != nil && !errors.Is(lookupErr, pgx.ErrNoRows) {
-				return errors.New("SERVER_ERROR")
-			}
-			tx, err := s.db.Begin(r.Context())
-			if err != nil {
-				return errors.New("SERVER_ERROR")
-			}
-			defer func() { _ = tx.Rollback(r.Context()) }()
-			if _, err = tx.Exec(r.Context(), `DELETE FROM fixed_ids WHERE device_id=$1`, c.deviceID); err == nil {
-				_, err = tx.Exec(r.Context(), `INSERT INTO fixed_ids(normalized_id,device_id,code_hash) VALUES($1,$2,$3)`, p.ID, c.deviceID, hash)
-			}
-			if err != nil || tx.Commit(r.Context()) != nil {
-				return errors.New("ID_UNAVAILABLE")
-			}
-		} else {
-			_, _ = s.db.Exec(r.Context(), `DELETE FROM fixed_ids WHERE device_id=$1`, c.deviceID)
-			ttl := time.Until(time.Unix(p.ExpiresAt, 0))
-			if ttl <= 0 || ttl > 6*time.Minute {
-				ttl = 5 * time.Minute
-			}
-			ownerKey := "pair-owner:" + p.ID
-			claimed, err := s.rdb.SetNX(r.Context(), ownerKey, c.deviceID, ttl).Result()
-			if err != nil || !claimed {
-				return errors.New("ID_UNAVAILABLE")
-			}
-			if s.rdb.HSet(r.Context(), "pair:"+p.ID, "device", c.deviceID, "hash", hash).Err() != nil {
-				_ = s.rdb.Del(r.Context(), ownerKey).Err()
-				return errors.New("SERVER_ERROR")
-			}
-			s.rdb.Expire(r.Context(), "pair:"+p.ID, ttl)
+		if err := s.publishPairing(r.Context(), c, p, env.Type == "REGISTER_FIXED"); err != nil {
+			return err
 		}
-		s.mu.Lock()
-		for oldID, owner := range s.pairings {
-			if owner == c.deviceID && oldID != p.ID {
-				delete(s.pairings, oldID)
-				_ = s.rdb.Del(r.Context(), "pair:"+oldID, "pair-owner:"+oldID).Err()
-			}
-		}
-		s.pairings[p.ID] = c.deviceID
-		s.mu.Unlock()
 		return s.send(c, "REGISTERED", "", map[string]any{"id": p.ID})
 	case "CONNECT":
 		var p connectPayload
@@ -260,42 +217,44 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 			}
 			return errors.New("AUTH_FAILED")
 		}
-		ok := s.verifyPairing(r.Context(), p.TargetID, p.Code)
-		s.mu.RLock()
-		controlledID := s.pairings[p.TargetID]
-		controlled := s.clients[controlledID]
-		s.mu.RUnlock()
-		if !ok {
+		if retry := s.validationRetry(r.Context(), r, c.deviceID, p.TargetID); retry > 0 {
+			return rateLimitError{retry}
+		}
+		if len(p.Code) < 8 || len(p.Code) > 32 {
 			return validationFailure()
 		}
+		pairing, controlled := s.verifyPairing(p.TargetID, p.Code)
+		if pairing == nil {
+			return validationFailure()
+		}
+		controlledID := pairing.deviceID
 		if controlled == nil || controlledID == c.deviceID {
 			return validationFailure()
 		}
 		sessionID := randomID(c.deviceID + p.TargetID + time.Now().String())
-		acquired, err := s.leases.Acquire(r.Context(), p.TargetID, sessionID)
+		acquired, err := s.leases.Acquire(r.Context(), controlledID, sessionID)
 		if err != nil || !acquired {
 			return validationFailure()
 		}
 		now := time.Now()
 		sess := &session{id: sessionID, targetID: p.TargetID, controllerID: c.deviceID, controlledID: controlledID, controllerSeen: now, controlledSeen: now, videoPolicy: p.VideoPolicy}
 		s.mu.Lock()
+		if s.pairings[p.TargetID] != pairing || (!pairing.expiresAt.IsZero() && !time.Now().Before(pairing.expiresAt)) || s.clients[c.deviceID] != c || s.clients[controlledID] != controlled {
+			s.mu.Unlock()
+			_ = s.leases.Release(r.Context(), controlledID, sessionID)
+			return errors.New("SESSION_INVALID")
+		}
 		s.sessions[sessionID] = sess
 		s.mu.Unlock()
 		go s.watchSession(sess)
 		time.AfterFunc(s.cfg.ConfirmationTimeout, func() {
-			s.mu.RLock()
-			current := s.sessions[sessionID]
-			expired := current != nil && !current.confirmed
-			s.mu.RUnlock()
-			if expired {
-				_, peer := s.sessionPeer(sessionID, controlledID)
-				if peer != nil {
-					_ = s.send(peer, "REVOKED", sessionID, map[string]any{"reason": "CONFIRMATION_TIMEOUT"})
-				}
-				s.endSession(context.Background(), sess)
-			}
+			s.revokeSessionIf(sess, "CONFIRMATION_TIMEOUT", true)
 		})
-		return s.send(controlled, "INCOMING", sessionID, map[string]any{"controllerDeviceId": c.deviceID, "expiresAtEpochMs": time.Now().Add(s.cfg.ConfirmationTimeout).UnixMilli()})
+		if err := s.send(controlled, "INCOMING", sessionID, map[string]any{"controllerDeviceId": c.deviceID, "expiresAtEpochMs": time.Now().Add(s.cfg.ConfirmationTimeout).UnixMilli()}); err != nil {
+			s.endSession(r.Context(), sess)
+			return err
+		}
+		return nil
 	case "CONFIRM":
 		var p confirmPayload
 		if json.Unmarshal(env.Payload, &p) != nil {
@@ -309,28 +268,22 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 			s.endSession(r.Context(), sess)
 			return s.send(peer, "REJECTED", sess.id, map[string]any{})
 		}
-		if ok, err := s.leases.Renew(r.Context(), sess.targetID, sess.id); err != nil || !ok {
+		if ok, err := s.leases.Renew(r.Context(), sess.controlledID, sess.id); err != nil || !ok {
 			s.revokeSession(sess, "LEASE_LOST")
 			return errors.New("LEASE_LOST")
 		}
-		s.mu.Lock()
-		if current := s.sessions[sess.id]; current == sess {
-			current.confirmed = true
-			current.controllerSeen = time.Now()
-			current.controlledSeen = time.Now()
-		} else {
-			s.mu.Unlock()
+		if !s.confirmSession(sess) {
 			return errors.New("SESSION_INVALID")
 		}
-		s.mu.Unlock()
 		payload := s.turnCredentials(c.deviceID)
 		payload["videoPolicy"] = sess.videoPolicy
-		if err := s.send(peer, "CONFIRMED", sess.id, payload); err != nil {
+		if err := s.sendConfirmation(c, peer, sess.id, payload); err != nil {
+			s.revokeSession(sess, "PEER_OFFLINE")
 			return err
 		}
-		return s.send(c, "CONFIRMED", sess.id, payload)
+		return nil
 	case "OFFER", "ANSWER", "ICE", "GEOMETRY", "CONTROL_ACK", "AUDIO_STATE", "ICE_RESTART", "CONTROL_OFFER", "CONTROL_ANSWER", "CONTROL_ICE", "CONTROL_RESTART":
-		_, peer := s.sessionPeer(env.SessionID, c.deviceID)
+		_, peer := s.confirmedSessionPeer(env.SessionID, c.deviceID)
 		if peer == nil {
 			return errors.New("SESSION_INVALID")
 		}
@@ -344,7 +297,7 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 		if sess == nil {
 			return errors.New("SESSION_INVALID")
 		}
-		ok, err := s.leases.Renew(r.Context(), sess.targetID, sess.id)
+		ok, err := s.leases.Renew(r.Context(), sess.controlledID, sess.id)
 		if err != nil || !ok {
 			s.revokeSession(sess, "LEASE_LOST")
 			return errors.New("LEASE_LOST")
@@ -364,61 +317,12 @@ func (s *Server) handle(c *client, env protocol.Envelope, r *http.Request) error
 		if sess == nil {
 			return nil // Revocation is idempotent, including simultaneous local stops.
 		}
-		_ = s.send(peer, "REVOKED", sess.id, map[string]any{})
 		s.endSession(r.Context(), sess)
+		_ = s.send(peer, "REVOKED", sess.id, map[string]any{})
 		return nil
 	default:
 		return errors.New("INVALID_TYPE")
 	}
-}
-func (s *Server) verifyPairing(ctx context.Context, id, code string) bool {
-	if values, err := s.rdb.HMGet(ctx, "pair:"+id, "hash").Result(); err == nil && len(values) == 1 && values[0] != nil {
-		return security.VerifyCode(fmt.Sprint(values[0]), code, s.cfg.CredentialPepper)
-	}
-	var hash string
-	if s.db.QueryRow(ctx, `SELECT code_hash FROM fixed_ids WHERE normalized_id=$1`, id).Scan(&hash) != nil {
-		return false
-	}
-	return security.VerifyCode(hash, code, s.cfg.CredentialPepper)
-}
-func (s *Server) sessionPeer(id, deviceID string) (*session, *client) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	sess := s.sessions[id]
-	if sess == nil {
-		return nil, nil
-	}
-	peerID := sess.controllerID
-	if deviceID == sess.controllerID {
-		peerID = sess.controlledID
-	} else if deviceID != sess.controlledID {
-		return nil, nil
-	}
-	return sess, s.clients[peerID]
-}
-func (s *Server) endSession(ctx context.Context, sess *session) {
-	s.mu.Lock()
-	if s.sessions[sess.id] != sess {
-		s.mu.Unlock()
-		return
-	}
-	delete(s.sessions, sess.id)
-	s.mu.Unlock()
-	_ = s.leases.Release(ctx, sess.targetID, sess.id)
-}
-func (s *Server) revokeSession(sess *session, reason string) {
-	s.mu.RLock()
-	current := s.sessions[sess.id]
-	controller, controlled := s.clients[sess.controllerID], s.clients[sess.controlledID]
-	s.mu.RUnlock()
-	if current != sess {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	s.endSession(ctx, sess)
-	_ = s.send(controller, "REVOKED", sess.id, map[string]any{"reason": reason})
-	_ = s.send(controlled, "REVOKED", sess.id, map[string]any{"reason": reason})
 }
 func (s *Server) watchSession(sess *session) {
 	ticker := time.NewTicker(time.Second)
@@ -440,7 +344,7 @@ func (s *Server) watchSession(sess *session) {
 			}
 		} else if now.Sub(lastRenew) >= s.cfg.LeaseRenew {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			ok, err := s.leases.Renew(ctx, sess.targetID, sess.id)
+			ok, err := s.leases.Renew(ctx, sess.controlledID, sess.id)
 			cancel()
 			if err != nil || !ok {
 				s.revokeSession(sess, "LEASE_LOST")
@@ -457,7 +361,7 @@ func (s *Server) removeClient(c *client) {
 		removed = true
 		delete(s.clients, c.deviceID)
 		for id, d := range s.pairings {
-			if d == c.deviceID {
+			if d.deviceID == c.deviceID {
 				delete(s.pairings, id)
 			}
 		}
@@ -495,6 +399,9 @@ func (s *Server) send(c *client, typ, sessionID string, payload any) error {
 func (c *client) sendRaw(env protocol.Envelope) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	return c.sendRawLocked(env)
+}
+func (c *client) sendRawLocked(env protocol.Envelope) error {
 	_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return c.conn.WriteJSON(env)
 }
@@ -515,27 +422,6 @@ type rateLimitError struct{ seconds int }
 func (e rateLimitError) Error() string { return "RATE_LIMITED" }
 func (s *Server) sendErrorWithRetry(c *client, sessionID string, seconds int) {
 	_ = s.send(c, "ERROR", sessionID, map[string]any{"code": "RATE_LIMITED", "retryAfterSeconds": seconds})
-}
-func (s *Server) recordValidationFailure(ctx context.Context, r *http.Request, device, target string) int {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	keys := []struct {
-		key string
-		max int
-	}{{"verify:ip:" + host, 20}, {"verify:device:" + device, 10}, {"verify:target:" + target, 10}}
-	retry := 0
-	for _, item := range keys {
-		ok, left, err := s.limits.RecordFailure(ctx, item.key, item.max, 10*time.Minute)
-		if err != nil {
-			return 60
-		}
-		if !ok && int(left.Seconds()) > retry {
-			retry = int(left.Seconds())
-		}
-	}
-	return retry
 }
 func (s *Server) turnCredentials(deviceID string) map[string]any {
 	if s.cfg.TurnRealm == "" || s.cfg.TurnSecret == "" {

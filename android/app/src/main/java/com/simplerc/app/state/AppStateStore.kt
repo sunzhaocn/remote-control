@@ -61,7 +61,8 @@ object AppStateStore {
 
     fun onStandbyServiceStopped() {
         mutableState.update {
-            it.copy(
+            if (it.role != DeviceRole.CONTROLLED) it.copy(standbyServiceRunning = false)
+            else it.copy(
                 standbyServiceRunning = false,
                 availability = AvailabilityState.STOPPED,
                 statusDetail = if(it.sessionState==com.simplerc.app.model.SessionState.ERROR)it.statusDetail else "已停止",

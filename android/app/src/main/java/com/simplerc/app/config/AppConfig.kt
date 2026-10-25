@@ -19,14 +19,24 @@ object AppConfig {
     const val RECONNECT_MAX_DELAY_SECONDS = 4L
     const val RECONNECT_JITTER_MILLIS = 750
     const val SIGNAL_CONNECT_TIMEOUT_SECONDS = 20L
-    const val QUALITY_UPDATE_MILLIS = 2000L
-    const val VIDEO_CAPTURE_LONG_EDGE = 1280
+    const val QUALITY_UPDATE_MILLIS = 1000L
+    const val VIDEO_STATS_MILLIS = 500L
+    // Phone 1080p: cap the short edge and preserve the complete screen aspect.
+    const val VIDEO_SEND_SHORT_EDGE = 1080
+    // Stable cadence; content changes alter detail, never toggle 30/60fps.
     const val VIDEO_MAX_FPS = 30
-    const val VIDEO_MIN_BITRATE_BPS = 300_000
-    const val VIDEO_START_BITRATE_BPS = 2_000_000
-    // null means no application ceiling; libwebrtc/codec/device limits still apply.
-    val VIDEO_MAX_BITRATE_BPS: Int? = null
+    const val VIDEO_START_FPS = 30
+    const val VIDEO_COMPATIBILITY_FPS = 30
+    const val VIDEO_LOW_BANDWIDTH_FPS = 30
+    const val VIDEO_FLOOR_BITRATE_BPS = 150_000
+    const val VIDEO_START_BITRATE_BPS = 4_000_000
+    const val VIDEO_RELAY_START_BITRATE_BPS = 3_000_000
+    const val VIDEO_TCP_START_BITRATE_BPS = 2_000_000
+    const val VIDEO_TCP_MAX_BITRATE_BPS = 8_000_000
+    // A finite media ceiling leaves room for interactive traffic on the shared physical link.
+    val VIDEO_MAX_BITRATE_BPS: Int? = 16_000_000
     const val AUDIO_BITRATE_HEADROOM_BPS = 128_000
+    const val CONTROL_BITRATE_HEADROOM_BPS = 192_000
     const val VIDEO_PREFER_HARDWARE_H264 = true
     const val VIDEO_MAINTAIN_FRAMERATE = true
 }

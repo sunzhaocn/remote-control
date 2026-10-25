@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
@@ -11,9 +13,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
-        android:name=".SimpleRcApplication"
+        android:name="com.simplerc.app.SimpleRcApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
@@ -24,7 +28,7 @@
         android:theme="@style/Theme.SimpleRC">
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.simplerc.app.MainActivity"
             android:exported="true"
             android:resizeableActivity="true">
             <intent-filter>
@@ -34,7 +38,7 @@
         </activity>
 
         <service
-            android:name=".accessibility.RemoteControlAccessibilityService"
+            android:name="com.simplerc.app.accessibility.RemoteControlAccessibilityService"
             android:description="@string/accessibility_service_description"
             android:exported="true"
             android:label="@string/accessibility_service_label"
@@ -48,17 +52,17 @@
         </service>
 
         <service
-            android:name=".service.StandbyService"
+            android:name="com.simplerc.app.service.StandbyService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />
         <service
-            android:name=".service.ControllerService"
+            android:name="com.simplerc.app.service.ControllerService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />
         <service
-            android:name=".capture.ScreenShareService"
+            android:name="com.simplerc.app.capture.ScreenShareService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone"
             android:stopWithTask="false" />

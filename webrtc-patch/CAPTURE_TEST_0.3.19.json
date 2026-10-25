@@ -1,0 +1,17 @@
+{
+  "tests": 10,
+  "passed": [
+    "api_31_rebind_rotation_and_cleanup",
+    "api_32_rebind_rotation_and_cleanup",
+    "api_34_rebind_rotation_and_cleanup",
+    "api_35_rebind_rotation_and_cleanup",
+    "api_29_recreate_and_cleanup",
+    "api_30_recreate_and_cleanup",
+    "failed_bind_preserves_owner_releases_replacement_and_can_retry",
+    "failed_resize_preserves_owner",
+    "api_34_initial_create_failure_cleanup",
+    "api_29_replacement_create_failure_cleanup"
+  ],
+  "previous_same_surface_regression_rejected": true,
+  "boundary": "Actual capturer Java with behavioral Android stubs; no device pixels tested."
+}

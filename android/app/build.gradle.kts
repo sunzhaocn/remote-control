@@ -12,11 +12,27 @@ android {
         applicationId = "com.simplerc.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.3.5"
+        versionCode = 40
+        versionName = "0.3.37"
+        buildConfigField("boolean", "FIXED_80_COMPARE", "false")
+        buildConfigField("boolean", "FIXED_88_COMPARE", "false")
     }
 
     buildTypes {
+        create("compare80") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".compare80"
+            versionNameSuffix = "-compare80"
+            matchingFallbacks += listOf("debug")
+            buildConfigField("boolean", "FIXED_80_COMPARE", "true")
+        }
+        create("compare88") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".compare88"
+            versionNameSuffix = "-compare88"
+            matchingFallbacks += listOf("debug")
+            buildConfigField("boolean", "FIXED_88_COMPARE", "true")
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
@@ -61,5 +77,6 @@ dependencies {
     implementation(libs.okhttp)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation("junit:junit:4.13.2")
 }
 

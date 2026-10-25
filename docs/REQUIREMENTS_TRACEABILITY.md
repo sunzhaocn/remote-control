@@ -1,6 +1,6 @@
-# 需求条款逐条对照（0.3.5）
+# 需求条款逐条对照（0.3.6）
 
-每个编号独立一行。状态仅为已实现/部分实现/未实现/已知偏离；构建和实机边界见STATE。0.3.4测试不得当作0.3.5新策略/独立连接通过。用户修订优先原文。
+每个编号独立一行。状态仅为已实现/部分实现/未实现/已知偏离；构建和实机边界见STATE。历史实机结果不得当作0.3.6新策略/实时输入通过。用户修订优先原文。
 
 | 条款与内容 | 状态 | 实现文件/证据 | 边界 |
 | --- | --- | --- | --- |
@@ -92,9 +92,9 @@
 | 8.2 使用 ICE 探测、候选选择与连接恢复实现优先策略，可提前准备中继候选，不把所有网络都能… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 持续采集/ICE restart存在，全部路径切换未测 |
 | 8.3 配置自建 STUN、TURN UDP 及必要的 TURN TCP/TLS 备选，说明后两… | 已实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
 | 8.4 依据真实选中候选对和网络信息显示路径，不简单把所有 host candidate 标成局… | 已实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 实际选中候选关联，非relay显示P2P，未证实LAN则不标LAN |
-| 8.5 视频初始目标约 720p、30fps，按设备、网络和温度调整；60fps 为可选能力（P… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 按比例长边1280/30fps，未实现温度驱动调整，60fps未授权 |
-| 8.6 动态调整码率、分辨率和必要时帧率，避免旧帧积压。声音开启时将音频带宽纳入整体拥塞管理，不… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | BWE/屏幕RTP预设及保帧率，新最大应用上限取消；完整动态质量策略缺口 |
-| 8.7 编解码和网络处理不阻塞主线程，控制队列有时效和长度限制，停止操作优先。 | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 纹理辅助线程、控制专用PC/时效/队列限制；连续手势实时输入未实现 |
+| 8.5 视频初始目标约 720p、30fps，按设备、网络和温度调整；60fps 为可选能力（P… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 0.3.7新策略长边1280、最高目标60fps；CPU/显示压力降30fps和分辨率，用户本次已授权；温度策略/实机待测 |
+| 8.6 动态调整码率、分辨率和必要时帧率，避免旧帧积压。声音开启时将音频带宽纳入整体拥塞管理，不… | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 0.3.7按带宽/控制往返/RTT/丢包/接收显示压力调整；原始编码2/3帧上限、最新单帧渲染；端到端与热状态待实机 |
+| 8.7 编解码和网络处理不阻塞主线程，控制队列有时效和长度限制，停止操作优先。 | 部分实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 控制专用PC、实时单指短续段、丢旧与可靠结束、700ms保护；主线程系统API调度与真实输入延迟待测 |
 | 8.8 可查看实际帧率、码率、RTT、丢包、连接路径和编解码器。RTT 不冒充完整的操作到画面反… | 已实现 | android/app/src/main/java/com/simplerc/app/webrtc/WebRtcEngine.kt、android/app/src/main/java/com/simplerc/app/webrtc/QualityStats.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
 | 9.1 区分临时断网、信令掉线、ICE 失败、媒体异常、采集被系统终止和用户主动停止。 | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
 | 9.2 临时 disconnected 或网络切换时显示“正在重连”，保留仍有效的采集，不直接结… | 已实现 | android/app/src/main/java/com/simplerc/app/session/SessionCoordinator.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、docs/RECOVERY.md | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
@@ -123,10 +123,10 @@
 | 11.8 旋转、折叠屏、窗口变化、键盘弹出收起时核对实际几何信息，不假定所有事件都改变采集尺寸。 | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 初始几何存在，旋转/折叠/窗口变化运行同步缺口 |
 | 11.9 几何数据带版本并与视频同步；未同步完成时暂停触控，过期事件拒绝执行。 | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 版本/旧事件拒绝存在，视频变化生产新版本缺口 |
 | 11.10 点击、长按、滑动完整路径使用统一变换。无效尺寸、异常值和越界坐标拒绝执行，不能强行夹到边… | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
-| 11.11 滑动路径规则：起点落在留边或内容区外，整个手势忽略，不转发；手势进行中某个点越出内容区，… | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 越界整段拒绝，不夹边；界面取消提示未完整 |
+| 11.11 滑动路径规则：起点落在留边或内容区外，整个手势忽略，不转发；手势进行中某个点越出内容区，… | 部分实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 0.3.6起点越界拒绝、实时拖动越界即结束触点；已发生输入无法撤销，提示仍待补 |
 | 11.12 首版不默认提供视频缩放和平移；以后增加时必须纳入逆变换后才能开放触控。 | 已实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
 | 11.13 提供可手动开启的几何诊断显示（P2）：实际内容边界、采集尺寸、方向、版本和触点。默认关闭… | 未实现 | android/app/src/main/java/com/simplerc/app/geometry/GeometryMapper.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt、android/app/src/main/java/com/simplerc/app/ui/MainScreen.kt | P2几何诊断叠层未授权 |
-| 12.1 支持点击、长按、滑动，以及返回、桌面、最近任务。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 点击/长按/完整滑动/三键，有部分实机回执 |
+| 12.1 支持点击、长按、滑动，以及返回、桌面、最近任务。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 0.3.6实时单指点击/长按/滑动及三键；历史回执不能证明新版实机 |
 | 12.2 使用无障碍手势及系统全局操作，检查执行返回值和取消结果，不以消息已发送当作操作成功。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
 | 12.3 成功连接且可操作后，控制端显示可拖动悬浮按钮，点击展开或收起三大金刚键。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
 | 12.4 按钮位于应用内部，不默认申请全局悬浮窗权限；按钮操作不能穿透到远端。 | 已实现 | android/app/src/main/java/com/simplerc/app/accessibility/RemoteControlAccessibilityService.kt、android/app/src/main/java/com/simplerc/app/webrtc/ControlTransport.kt、android/app/src/main/java/com/simplerc/app/session/SessionMedia.kt | 已编译或文档已交付；逐项实机边界见STATE/验收清单 |
@@ -200,5 +200,7 @@
 | 完整实际诊断、静止/滑动区分 | 已实现 | QualityStats.kt、MediaDiagnostics.kt、VIDEO_DIAGNOSTICS.md；缺字段未知，未采集新实机数据 |
 | H.264 profile匹配、VP8兼容回退 | 已实现 | WebRtcEngine.kt、SessionMedia.kt；保留支持列表/native协商，实际codec/profile显示于stats |
 | 屏幕源/默认与新策略切换 | 已实现 | WebRtcEngine.kt、MainViewModel.kt、MainScreen.kt、server/api；下一会话生效 |
-| 码率合理默认及取消6Mbps上限 | 已实现 | AppConfig.kt、SessionMedia.kt、DECISIONS D-041及最大修订；2Mbps起始/0.3Mbps最小/max=null |
+| 互动优先视频预算 | 已实现 | AppConfig.kt、InteractiveVideoPolicy.kt、SessionMedia.kt；D-044覆盖旧策略，2Mbps起始/4Mbps最高，按可用带宽与拥塞调整 |
 | 商业级流畅度 | 部分实现 | VIDEO_DIAGNOSTICS.md；卡顿根因待动态统计，不承诺达到商业软件水平 |
+| ToDesk 已确认低延迟原则落地 | 已实现 | LOW_LATENCY_0.3.7.md、webrtc-patch；Java硬编/硬解实时参数请求和有界队列、原生GL任务合并；34项模拟测试通过，参数是否兑现及体感待实机 |
+| 接收端显示压力与60/30fps调节 | 已实现 | NativeVideoStats.kt、InteractiveVideoPolicy.kt、SessionMedia.kt；本机等待/绘制/换缓冲/解码反馈，恢复有滞回，缺统计不伪造实测 |

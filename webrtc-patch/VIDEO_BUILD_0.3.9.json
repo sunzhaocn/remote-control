@@ -1,0 +1,14 @@
+{
+  "version": "0.3.9",
+  "previous_version": "0.3.8",
+  "aar_bytes": 20617176,
+  "aar_sha256": "580224a8f315b042d2b629fe612ed16e271bb1b56698a88e8a6d1e666e7c2e58",
+  "native_libraries_unchanged": {
+    "jni/arm64-v8a/libjingle_peerconnection_so.so": "4e9d2df81f7db6d184a9d0024e6f9825c6325c3ee54a8d61ef657f02ef8d85e7",
+    "jni/armeabi-v7a/libjingle_peerconnection_so.so": "5c4e33201809f56eb41ead202000f7ba8afa0a87ce159af96d18d940622c5c78",
+    "jni/x86/libjingle_peerconnection_so.so": "2e3e1e743682038363bca30aeb2e09230883aba653e3e411c9a7f7cc85516ddb",
+    "jni/x86_64/libjingle_peerconnection_so.so": "36272820d42b34f29fed7a11a4eecccedee3bfe86c45f280e0be5c5b246f133d"
+  },
+  "audio_capture_patch_present": true,
+  "video_and_rotation_capture_patches_present": true
+}

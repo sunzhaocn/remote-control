@@ -1,0 +1,461 @@
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/AndroidVideoDecoder.java b/stream-webrtc-android/src/main/java/org/webrtc/AndroidVideoDecoder.java
+index efd11db..80ba6fa 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/AndroidVideoDecoder.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/AndroidVideoDecoder.java
+@@ -14,6 +14,7 @@ import android.media.MediaCodec;
+ import android.media.MediaCodecInfo.CodecCapabilities;
+ import android.media.MediaFormat;
+ import android.os.SystemClock;
++import android.os.Build;
+ import android.view.Surface;
+ import androidx.annotation.Nullable;
+ import java.io.IOException;
+@@ -45,6 +46,7 @@ class AndroidVideoDecoder implements VideoDecoder, VideoSink {
+ 
+   private final MediaCodecWrapperFactory mediaCodecWrapperFactory;
+   private final String codecName;
++  private final SimpleRcVideoTuning.Session simpleRcTuning = SimpleRcVideoTuning.current();
+   private final VideoCodecMimeType codecType;
+ 
+   private static class FrameInfo {
+@@ -148,6 +150,9 @@ class AndroidVideoDecoder implements VideoDecoder, VideoSink {
+ 
+   // Internal variant is used when restarting the codec due to reconfiguration.
+   private VideoCodecStatus initDecodeInternal(int width, int height) {
++    simpleRcTuning.decoderName = null;
++    simpleRcTuning.decoderLowLatencySupported = false;
++    simpleRcTuning.decoderLowLatencyRequested = false;
+     decoderThreadChecker.checkIsOnValidThread();
+     Logging.d(TAG,
+         "initDecodeInternal name: " + codecName + " type: " + codecType + " width: " + width
+@@ -178,10 +183,41 @@ class AndroidVideoDecoder implements VideoDecoder, VideoSink {
+       if (sharedContext == null) {
+         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat);
+       }
+-      codec.configure(format, surface, null, 0);
++      simpleRcTuning.decoderName = codecName;
++      boolean interactiveOptions = simpleRcTuning.interactive && Build.VERSION.SDK_INT >= 29;
++      boolean supportsLowLatency = false;
++      if (interactiveOptions) {
++        format.setInteger(MediaFormat.KEY_PRIORITY, 0);
++        if (Build.VERSION.SDK_INT >= 30) {
++          try {
++            supportsLowLatency = codec.getCodecInfo().getCapabilitiesForType(codecType.mimeType())
++                .isFeatureSupported(CodecCapabilities.FEATURE_LowLatency);
++          } catch (RuntimeException ignored) {}
++          if (supportsLowLatency) format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
++        }
++      }
++      simpleRcTuning.decoderLowLatencySupported = supportsLowLatency;
++      try {
++        codec.configure(format, surface, null, 0);
++        simpleRcTuning.decoderLowLatencyRequested = supportsLowLatency;
++      } catch (IllegalArgumentException | IllegalStateException optionFailure) {
++        if (!interactiveOptions) throw optionFailure;
++        codec.release();
++        codec = mediaCodecWrapperFactory.createByCodecName(codecName);
++        format.removeKey(MediaFormat.KEY_PRIORITY);
++        if (Build.VERSION.SDK_INT >= 30) format.removeKey(MediaFormat.KEY_LOW_LATENCY);
++        codec.configure(format, surface, null, 0);
++        simpleRcTuning.decoderLowLatencyRequested = false;
++        simpleRcTuning.codecOptionsFallback = true;
++      }
+       codec.start();
+-    } catch (IllegalStateException | IllegalArgumentException e) {
++    } catch (IllegalStateException | IllegalArgumentException | IOException e) {
+       Logging.e(TAG, "initDecode failed", e);
++      simpleRcTuning.decoderName = null;
++      if (codec != null && outputThread == null) {
++        try { codec.release(); } catch (RuntimeException ignored) {}
++        codec = null;
++      }
+       release();
+       return VideoCodecStatus.FALLBACK_SOFTWARE;
+     }
+@@ -266,6 +302,7 @@ class AndroidVideoDecoder implements VideoDecoder, VideoSink {
+     buffer.put(frame.buffer);
+ 
+     frameInfos.offer(new FrameInfo(SystemClock.elapsedRealtime(), frame.rotation));
++    simpleRcTuning.decoderQueue(frameInfos.size());
+     try {
+       codec.queueInputBuffer(index, 0 /* offset */, size,
+           TimeUnit.NANOSECONDS.toMicros(frame.captureTimeNs), 0 /* flags */);
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/EglRenderer.java b/stream-webrtc-android/src/main/java/org/webrtc/EglRenderer.java
+index 10837ad..bbdf6b5 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/EglRenderer.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/EglRenderer.java
+@@ -69,6 +69,12 @@ public class EglRenderer implements VideoSink {
+         eglBase.makeCurrent();
+         // Necessary for YUV frames with odd width.
+         GLES20.glPixelStorei(GLES20.GL_UNPACK_ALIGNMENT, 1);
++        boolean simpleRcHasFrame;
++        synchronized (frameLock) {
++          simpleRcQueue.surfaceReady(pendingFrame != null);
++          simpleRcHasFrame = pendingFrame != null;
++        }
++        if (simpleRcHasFrame) scheduleSimpleRcRender();
+       }
+     }
+   }
+@@ -111,6 +117,30 @@ public class EglRenderer implements VideoSink {
+   // Pending frame to render. Serves as a queue with size 1. Synchronized on `frameLock`.
+   private final Object frameLock = new Object();
+   @Nullable private VideoFrame pendingFrame;
++  private final SimpleRcRenderQueue simpleRcQueue = new SimpleRcRenderQueue();
++  private SimpleRcVideoTuning.Session pendingFrameTuning;
++  private SimpleRcVsyncScheduler simpleRcVsync;
++  private final Runnable renderFrameRunnable = this::scheduleSimpleRcRender;
++
++  private void scheduleSimpleRcRender() {
++    synchronized (threadLock) {
++      if (eglThread == null || eglThread.getHandler().getLooper().getThread() != Thread.currentThread()) return;
++    }
++    if (eglBase == null || !eglBase.hasSurface()) return;
++    if (!SimpleRcVideoTuning.current().interactive) { renderFrameOnRenderThread(); return; }
++    if (simpleRcVsync == null) {
++      simpleRcVsync = new SimpleRcVsyncScheduler(SimpleRcVideoTuning.current().maxFps, () -> {
++        // Surface destruction can overtake a queued VSync. Preserve the newest pending
++        // frame for surface recreation; don't spin while the app has no surface.
++        if (eglBase != null && eglBase.hasSurface()) renderFrameOnRenderThread();
++      });
++    }
++    simpleRcVsync.request();
++  }
++
++  private void closeSimpleRcVsync() {
++    if (simpleRcVsync != null) { simpleRcVsync.close(); simpleRcVsync = null; }
++  }
+ 
+   // These variables are synchronized on `layoutLock`.
+   private final Object layoutLock = new Object();
+@@ -251,6 +281,7 @@ public class EglRenderer implements VideoSink {
+ 
+       // Release EGL and GL resources on render thread.
+       eglThread.getHandler().postAtFrontOfQueue(() -> {
++        closeSimpleRcVsync();
+         // Detach current shader program.
+         synchronized (EglBase.lock) {
+           GLES20.glUseProgram(/* program= */ 0);
+@@ -285,6 +316,7 @@ public class EglRenderer implements VideoSink {
+         pendingFrame = null;
+       }
+     }
++    synchronized (frameLock) { simpleRcQueue.reset(); pendingFrameTuning = null; }
+     logD("Releasing done.");
+   }
+ 
+@@ -469,13 +501,17 @@ public class EglRenderer implements VideoSink {
+         return;
+       }
+       synchronized (frameLock) {
++        pendingFrameTuning = SimpleRcVideoTuning.current();
++        pendingFrameTuning.rendererReceived.incrementAndGet();
+         dropOldFrame = (pendingFrame != null);
+         if (dropOldFrame) {
+           pendingFrame.release();
++          pendingFrameTuning.rendererReplaced.incrementAndGet();
+         }
+         pendingFrame = frame;
+         pendingFrame.retain();
+-        eglThread.getHandler().post(this::renderFrameOnRenderThread);
++        boolean shouldPost = simpleRcQueue.offer(System.nanoTime());
++        if (!pendingFrameTuning.interactive || shouldPost) eglThread.getHandler().post(renderFrameRunnable);
+       }
+     }
+     if (dropOldFrame) {
+@@ -496,6 +532,7 @@ public class EglRenderer implements VideoSink {
+       if (eglThread != null) {
+         eglThread.getHandler().removeCallbacks(eglSurfaceCreationRunnable);
+         eglThread.getHandler().postAtFrontOfQueue(() -> {
++          closeSimpleRcVsync();
+           if (eglBase != null) {
+             eglBase.detachCurrent();
+             eglBase.releaseSurface();
+@@ -544,11 +581,15 @@ public class EglRenderer implements VideoSink {
+       if (eglThread == null) {
+         return;
+       }
++      synchronized (frameLock) {
++        if (pendingFrame != null) { pendingFrame.release(); pendingFrame = null; }
++        simpleRcQueue.clearFrame();
++      }
+       eglThread.getHandler().postAtFrontOfQueue(() -> clearSurfaceOnRenderThread(r, g, b, a));
+     }
+   }
+ 
+-  private void swapBuffersOnRenderThread(final VideoFrame frame, long swapBuffersStartTimeNs) {
++  private void swapBuffersOnRenderThread(final VideoFrame frame, long swapBuffersStartTimeNs, SimpleRcVideoTuning.Session tuning) {
+     synchronized (threadLock) {
+       if (eglThread != null) {
+         eglThread.scheduleRenderUpdate(
+@@ -566,6 +607,7 @@ public class EglRenderer implements VideoSink {
+               eglBase.swapBuffers();
+             }
+ 
++            tuning.swapped(System.nanoTime() - swapBuffersStartTimeNs);
+             synchronized (statisticsLock) {
+               renderSwapBufferTimeNs += (System.nanoTime() - swapBuffersStartTimeNs);
+             }
+@@ -580,13 +622,20 @@ public class EglRenderer implements VideoSink {
+   private void renderFrameOnRenderThread() {
+     // Fetch and render `pendingFrame`.
+     final VideoFrame frame;
++    final long arrivalNs;
++    final SimpleRcVideoTuning.Session tuning;
+     synchronized (frameLock) {
++      arrivalNs = simpleRcQueue.take();
++      tuning = pendingFrameTuning;
+       if (pendingFrame == null) {
+         return;
+       }
+       frame = pendingFrame;
+       pendingFrame = null;
+     }
++    // pendingFrame already contains the newest decoded frame. Never discard the
++    // final screen update merely because the renderer was busy for 150 ms.
++    // Replacement in onFrame bounds the queue; arrivalNs remains useful telemetry.
+     if (eglBase == null || !eglBase.hasSurface()) {
+       logD("Dropping frame - No surface");
+       frame.release();
+@@ -650,7 +699,9 @@ public class EglRenderer implements VideoSink {
+           eglBase.surfaceWidth(), eglBase.surfaceHeight());
+ 
+         final long swapBuffersStartTimeNs = System.nanoTime();
+-        swapBuffersOnRenderThread(frame, swapBuffersStartTimeNs);
++        tuning.rendered(startTimeNs - arrivalNs, swapBuffersStartTimeNs - startTimeNs,
++          simpleRcVsync == null ? 0 : simpleRcVsync.pacedNs(arrivalNs));
++        swapBuffersOnRenderThread(frame, swapBuffersStartTimeNs, tuning);
+ 
+         synchronized (statisticsLock) {
+           ++framesRendered;
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/HardwareVideoEncoder.java b/stream-webrtc-android/src/main/java/org/webrtc/HardwareVideoEncoder.java
+index db3e2b6..a8e9d62 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/HardwareVideoEncoder.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/HardwareVideoEncoder.java
+@@ -41,6 +41,9 @@ class HardwareVideoEncoder implements VideoEncoder {
+ 
+   // See MAX_ENCODER_Q_SIZE in androidmediaencoder.cc.
+   private static final int MAX_ENCODER_Q_SIZE = 2;
++  private final SimpleRcVideoTuning.Session simpleRcTuning = SimpleRcVideoTuning.current();
++  private final SimpleRcEncoderQueue simpleRcEncoderQueue = new SimpleRcEncoderQueue(simpleRcTuning.interactive, simpleRcTuning.maxFps);
++  private final java.util.concurrent.atomic.AtomicBoolean simpleRcRecoveryKeyFrame = new java.util.concurrent.atomic.AtomicBoolean();
+ 
+   private static final int MEDIA_CODEC_RELEASE_TIMEOUT_MS = 5000;
+   private static final int DEQUEUE_OUTPUT_BUFFER_TIMEOUT_US = 100000;
+@@ -232,6 +235,12 @@ class HardwareVideoEncoder implements VideoEncoder {
+   }
+ 
+   private VideoCodecStatus initEncodeInternal() {
++    simpleRcTuning.encoderName = null;
++    simpleRcTuning.encoderOptionsRequested = false;
++    simpleRcTuning.encoderLatencyFrames = -1;
++    simpleRcEncoderQueue.reset();
++    simpleRcTuning.encoderQueueLimit = simpleRcEncoderQueue.limit();
++    simpleRcTuning.encoderQueue(0, false);
+     encodeThreadChecker.checkIsOnValidThread();
+ 
+     nextPresentationTimestampUs = 0;
+@@ -283,9 +292,32 @@ class HardwareVideoEncoder implements VideoEncoder {
+         isEncodingStatisticsEnabled = true;
+       }
+ 
+-      Logging.d(TAG, "Format: " + format);
+-      codec.configure(
+-        format, null /* surface */, null /* crypto */, MediaCodec.CONFIGURE_FLAG_ENCODE);
++      simpleRcTuning.encoderName = codecName;
++      simpleRcTuning.encoderSurface = useSurfaceMode;
++      boolean interactiveOptions = simpleRcTuning.interactive && Build.VERSION.SDK_INT >= 29;
++      if (interactiveOptions) {
++        format.setInteger(MediaFormat.KEY_PRIORITY, 0);
++        format.setInteger(MediaFormat.KEY_LATENCY, 1);
++        if (codecType == VideoCodecMimeType.H264 || codecType == VideoCodecMimeType.H265) {
++          format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0);
++        }
++        // Limit raw frames upstream. MediaCodec's max-fps-to-encoder silently discards
++        // Surface inputs, breaking WebRTC's one-input/one-output metadata queue.
++      }
++      try {
++        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
++        simpleRcTuning.encoderOptionsRequested = interactiveOptions;
++      } catch (IllegalArgumentException | IllegalStateException optionFailure) {
++        if (!interactiveOptions) throw optionFailure;
++        codec.release();
++        codec = mediaCodecWrapperFactory.createByCodecName(codecName);
++        format.removeKey(MediaFormat.KEY_PRIORITY);
++        format.removeKey(MediaFormat.KEY_LATENCY);
++        format.removeKey(MediaFormat.KEY_MAX_B_FRAMES);
++        codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
++        simpleRcTuning.encoderOptionsRequested = false;
++        simpleRcTuning.codecOptionsFallback = true;
++      }
+ 
+       if (useSurfaceMode) {
+         textureEglBase = EglBase.createEgl14(sharedContext, EglBase.CONFIG_RECORDABLE);
+@@ -297,8 +329,12 @@ class HardwareVideoEncoder implements VideoEncoder {
+       updateInputFormat(codec.getInputFormat());
+ 
+       codec.start();
+-    } catch (IllegalArgumentException | IllegalStateException e) {
++    } catch (IllegalArgumentException | IllegalStateException | IOException e) {
+       Logging.e(TAG, "initEncodeInternal failed", e);
++      simpleRcTuning.encoderName = null;
++      if (codec != null && outputThread == null) {
++        try { codec.release(); } catch (RuntimeException ignored) {}
++      }
+       release();
+       return VideoCodecStatus.FALLBACK_SOFTWARE;
+     }
+@@ -344,6 +380,7 @@ class HardwareVideoEncoder implements VideoEncoder {
+       textureInputSurface = null;
+     }
+     outputBuilders.clear();
++    simpleRcTuning.encoderQueue(0, false);
+ 
+     codec = null;
+     outputThread = null;
+@@ -374,9 +411,13 @@ class HardwareVideoEncoder implements VideoEncoder {
+       }
+     }
+ 
+-    if (outputBuilders.size() > MAX_ENCODER_Q_SIZE) {
++    int queueDepth = outputBuilders.size();
++    boolean queueFull = simpleRcEncoderQueue.full(queueDepth, System.nanoTime());
++    simpleRcTuning.encoderQueueLimit = simpleRcEncoderQueue.limit();
++    simpleRcTuning.encoderQueue(queueDepth, queueFull);
++    if (queueFull) {
+       // Too many frames in the encoder.  Drop this frame.
+-      Logging.e(TAG, "Dropped frame, encoder queue full");
++      Logging.d(TAG, "Dropped frame, encoder queue full");
+       return VideoCodecStatus.NO_OUTPUT; // See webrtc bug 2887.
+     }
+ 
+@@ -387,6 +428,8 @@ class HardwareVideoEncoder implements VideoEncoder {
+       }
+     }
+ 
++    requestedKeyFrame |= simpleRcRecoveryKeyFrame.getAndSet(false);
++    requestedKeyFrame |= simpleRcTuning.clearFrame.takeKeyFrameRequest(frameWidth, frameHeight, videoFrame.getTimestampNs());
+     if (requestedKeyFrame || shouldForceKeyFrame(videoFrame.getTimestampNs())) {
+       requestKeyFrame(videoFrame.getTimestampNs());
+     }
+@@ -397,6 +440,7 @@ class HardwareVideoEncoder implements VideoEncoder {
+       .setEncodedHeight(videoFrame.getBuffer().getHeight())
+       .setRotation(videoFrame.getRotation());
+     outputBuilders.offer(builder);
++    simpleRcTuning.encoderQueue(outputBuilders.size(), false);
+ 
+     long presentationTimestampUs = nextPresentationTimestampUs;
+     // Round frame duration down to avoid bitrate overshoot.
+@@ -415,6 +459,7 @@ class HardwareVideoEncoder implements VideoEncoder {
+     if (returnValue != VideoCodecStatus.OK) {
+       // Keep the output builders in sync with buffers in the codec.
+       outputBuilders.pollLast();
++      simpleRcTuning.encoderQueue(outputBuilders.size(), true);
+     }
+ 
+     return returnValue;
+@@ -487,9 +532,8 @@ class HardwareVideoEncoder implements VideoEncoder {
+   @Override
+   public VideoCodecStatus setRateAllocation(BitrateAllocation bitrateAllocation, int framerate) {
+     encodeThreadChecker.checkIsOnValidThread();
+-    if (framerate > MAX_VIDEO_FRAMERATE) {
+-      framerate = MAX_VIDEO_FRAMERATE;
+-    }
++    int fpsLimit = simpleRcTuning.interactive ? simpleRcTuning.maxFps : MAX_VIDEO_FRAMERATE;
++    if (framerate > fpsLimit) framerate = fpsLimit;
+     bitrateAdjuster.setTargets(bitrateAllocation.getSum(), framerate);
+     return VideoCodecStatus.OK;
+   }
+@@ -591,6 +635,10 @@ class HardwareVideoEncoder implements VideoEncoder {
+       MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+       int index = codec.dequeueOutputBuffer(info, DEQUEUE_OUTPUT_BUFFER_TIMEOUT_US);
+       if (index < 0) {
++        if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
++          MediaFormat actual = codec.getOutputFormat();
++          if (actual.containsKey(MediaFormat.KEY_LATENCY)) simpleRcTuning.encoderLatencyFrames = actual.getInteger(MediaFormat.KEY_LATENCY);
++        }
+         if (index == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+           outputBuffersBusyCount.waitForZero();
+         }
+@@ -611,6 +659,7 @@ class HardwareVideoEncoder implements VideoEncoder {
+           configBuffer = ByteBuffer.allocateDirect(info.size);
+           configBuffer.put(outputBuffer);
+         }
++        codec.releaseOutputBuffer(index, false);
+         return;
+       }
+ 
+@@ -666,11 +715,21 @@ class HardwareVideoEncoder implements VideoEncoder {
+         : EncodedImage.FrameType.VideoFrameDelta;
+ 
+       EncodedImage.Builder builder = outputBuilders.poll();
++      simpleRcEncoderQueue.output();
++      simpleRcTuning.encoderQueue(outputBuilders.size(), false);
++      if (builder == null) {
++        if (releaseCallback != null) releaseCallback.run();
++        simpleRcRecoveryKeyFrame.set(true);
++        simpleRcTuning.encoderDropped.incrementAndGet();
++        Logging.w(TAG, "Encoded frame without matching input metadata");
++        return;
++      }
+       builder.setBuffer(frameBuffer, releaseCallback);
+       builder.setFrameType(frameType);
+       builder.setQp(qp);
+ 
+       EncodedImage encodedImage = builder.createEncodedImage();
++      simpleRcTuning.clearFrame.encoded(encodedImage.encodedWidth, encodedImage.encodedHeight, encodedImage.captureTimeNs, isKeyFrame, encodedImage.qp);
+       // TODO(mellem):  Set codec-specific info.
+       callback.onEncodedFrame(encodedImage, new CodecSpecificInfo());
+       // Note that the callback may have retained the image.
+diff --git a/stream-webrtc-android/src/main/java/org/webrtc/SurfaceTextureHelper.java b/stream-webrtc-android/src/main/java/org/webrtc/SurfaceTextureHelper.java
+index 3ea2273..412b254 100644
+--- a/stream-webrtc-android/src/main/java/org/webrtc/SurfaceTextureHelper.java
++++ b/stream-webrtc-android/src/main/java/org/webrtc/SurfaceTextureHelper.java
+@@ -151,6 +151,15 @@ public class SurfaceTextureHelper {
+   @Nullable private VideoSink listener;
+   // The possible states of this class.
+   private boolean hasPendingTexture;
++  private final SimpleRcCaptureScheduler simpleRcCaptureScheduler;
++
++  /** Opt in only for screen capture; decoder textures retain their original delivery behavior. */
++  public void setCaptureFrameRate(int maxFps) {
++    handler.post(() -> {
++      simpleRcCaptureScheduler.configure(maxFps);
++      tryDeliverTextureFrame();
++    });
++  }
+   private volatile boolean isTextureInUse;
+   private boolean isQuitting;
+   private int frameRotation;
+@@ -180,6 +189,7 @@ public class SurfaceTextureHelper {
+       throw new IllegalStateException("SurfaceTextureHelper must be created on the handler thread");
+     }
+     this.handler = handler;
++    simpleRcCaptureScheduler = new SimpleRcCaptureScheduler(handler, this::tryDeliverTextureFrame);
+     this.timestampAligner = alignTimestamps ? new TimestampAligner() : null;
+     this.yuvConverter = yuvConverter;
+     this.frameRefMonitor = frameRefMonitor;
+@@ -230,6 +240,7 @@ public class SurfaceTextureHelper {
+     ThreadUtils.invokeAtFrontUninterruptibly(handler, () -> {
+       listener = null;
+       pendingListener = null;
++      simpleRcCaptureScheduler.reset();
+     });
+   }
+ 
+@@ -310,6 +321,7 @@ public class SurfaceTextureHelper {
+     Logging.d(TAG, "dispose()");
+     ThreadUtils.invokeAtFrontUninterruptibly(handler, () -> {
+       isQuitting = true;
++      simpleRcCaptureScheduler.reset();
+       if (!isTextureInUse) {
+         release();
+       }
+@@ -348,6 +360,7 @@ public class SurfaceTextureHelper {
+       Logging.w(TAG, "Texture size has not been set.");
+       return;
+     }
++    if (!simpleRcCaptureScheduler.ready()) return;
+     isTextureInUse = true;
+     hasPendingTexture = false;
+ 

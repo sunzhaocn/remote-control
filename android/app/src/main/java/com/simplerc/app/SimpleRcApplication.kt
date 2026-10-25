@@ -6,9 +6,11 @@ import com.simplerc.app.session.SessionCoordinator
 
 class SimpleRcApplication : Application() {
     val sessions by lazy { SessionCoordinator(this) }
+    val screenAwake by lazy { com.simplerc.app.service.ScreenAwakeKeeper(this) }
     override fun onCreate() {
         super.onCreate()
         NotificationChannels.create(this)
+        screenAwake.start()
     }
 }
 

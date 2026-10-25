@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compare80_app_name">SimpleRC 80% 对照</string>
+    <string name="compare80_accessibility_name">SimpleRC 80% 对照 · 远程操作</string>
+</resources>

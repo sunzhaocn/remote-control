@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="@string/compare80_app_name" tools:replace="android:label">
+        <service android:name="com.simplerc.app.accessibility.RemoteControlAccessibilityService"
+            android:label="@string/compare80_accessibility_name" tools:replace="android:label" />
+        <service android:name="com.simplerc.app.service.StandbyService"
+            android:foregroundServiceType="connectedDevice" />
+        <service android:name="com.simplerc.app.service.ControllerService"
+            android:foregroundServiceType="connectedDevice" />
+        <service android:name="com.simplerc.app.capture.ScreenShareService"
+            android:foregroundServiceType="mediaProjection|microphone" />
+    </application>
+</manifest>

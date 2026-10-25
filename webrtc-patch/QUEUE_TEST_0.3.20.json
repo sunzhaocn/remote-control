@@ -1,0 +1,16 @@
+{
+  "tests": 8,
+  "passed": [
+    "30fps_90ms_pipeline_full_throughput",
+    "60fps_45ms_pipeline_full_throughput",
+    "interactive_permanent_stall_bounded_to_three_and_reset_safe",
+    "default_permanent_stall_bounded_to_three_and_reset_safe",
+    "clock_and_frame_rate_cannot_expand_queue",
+    "final_frame_retained_after_500ms_stall_without_new_frame",
+    "hundred_thousand_frames_coalesce_to_one_latest_wakeup",
+    "clear_and_release_preserve_future_wakeups"
+  ],
+  "previous_aar_starvation_rejected": true,
+  "production_renderer_age_drop_absent": true,
+  "boundary": "Actual built AAR Java helpers and renderer bytecode; no phone codec/GPU measured."
+}

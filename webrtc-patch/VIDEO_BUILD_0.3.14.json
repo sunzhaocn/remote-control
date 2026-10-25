@@ -1,0 +1,79 @@
+{
+  "previous_aar_sha256": "b72094a0fb502b82d2d945d0255a48b6ca56b60d162152f9f4195a97cf7992f6",
+  "aar_bytes": 20617154,
+  "aar_sha256": "35a27f1e208deec6ff784805c47cf50195cded85412d476f66e8578b8e18bdb9",
+  "native_libraries_unchanged": {
+    "jni/arm64-v8a/libjingle_peerconnection_so.so": "4e9d2df81f7db6d184a9d0024e6f9825c6325c3ee54a8d61ef657f02ef8d85e7",
+    "jni/armeabi-v7a/libjingle_peerconnection_so.so": "5c4e33201809f56eb41ead202000f7ba8afa0a87ce159af96d18d940622c5c78",
+    "jni/x86/libjingle_peerconnection_so.so": "2e3e1e743682038363bca30aeb2e09230883aba653e3e411c9a7f7cc85516ddb",
+    "jni/x86_64/libjingle_peerconnection_so.so": "36272820d42b34f29fed7a11a4eecccedee3bfe86c45f280e0be5c5b246f133d"
+  },
+  "audio_capture_patch_present": true,
+  "video_and_rotation_capture_patches_present": true,
+  "codec_surface_input_dropping_disabled": true,
+  "capture_resize_version_guard_present": true,
+  "capture_surface_rebind_fix_present": true,
+  "audio_java_classes_unchanged": 25,
+  "renderer_latest_frame_age_drop_removed": true,
+  "capture_class_sha256": "ccc1ab4596961a190d8702be5822a1e47d657631e7fa73902a607a00c0bf0c13",
+  "capture_class_unchanged_from_0313": true,
+  "changed_java_classes": [
+    "org/webrtc/EglRenderer.class",
+    "org/webrtc/SimpleRcEncoderQueue.class",
+    "org/webrtc/SimpleRcRenderQueue.class",
+    "org/webrtc/SimpleRcVideoTuning$Session.class"
+  ],
+  "upstream_revision": "5d388e533d87f857e7de4a729630200cf9766369",
+  "created_at": "2026-10-16T11:52:07.717057+00:00",
+  "build": ":stream-webrtc-android:assembleRelease BUILD SUCCESSFUL in 17s",
+  "source_patch_replay": "All three patches replayed on pinned clean checkout and matched SDK Java source byte for byte",
+  "surface_behavior_tests": {
+    "tests": 10,
+    "passed": [
+      "api_31_rebind_rotation_and_cleanup",
+      "api_32_rebind_rotation_and_cleanup",
+      "api_34_rebind_rotation_and_cleanup",
+      "api_35_rebind_rotation_and_cleanup",
+      "api_29_recreate_and_cleanup",
+      "api_30_recreate_and_cleanup",
+      "failed_bind_preserves_owner_releases_replacement_and_can_retry",
+      "failed_resize_preserves_owner",
+      "api_34_initial_create_failure_cleanup",
+      "api_29_replacement_create_failure_cleanup"
+    ],
+    "previous_same_surface_regression_rejected": true,
+    "boundary": "Actual capturer Java with behavioral Android stubs; no device pixels tested."
+  },
+  "video_queue_tests": {
+    "tests": 8,
+    "passed": [
+      "30fps_90ms_pipeline_full_throughput",
+      "60fps_45ms_pipeline_full_throughput",
+      "interactive_permanent_stall_bounded_to_three_and_reset_safe",
+      "default_permanent_stall_bounded_to_three_and_reset_safe",
+      "clock_and_frame_rate_cannot_expand_queue",
+      "final_frame_retained_after_500ms_stall_without_new_frame",
+      "hundred_thousand_frames_coalesce_to_one_latest_wakeup",
+      "clear_and_release_preserve_future_wakeups"
+    ],
+    "previous_aar_starvation_rejected": true,
+    "production_renderer_age_drop_absent": true,
+    "boundary": "Actual built AAR Java helpers and renderer bytecode; no phone codec/GPU measured."
+  },
+  "source_sha256": {
+    "webrtc-patch/patches/0001-audioplaybackcapture-factory.patch": "3a9ca6f955df4476a4bbe4e5e80910fad5352dd0a4d49ff1f523e70e355872d6",
+    "webrtc-patch/patches/0002-low-latency-video.patch": "bc62a57977f8f789a36e3bc44f62aa31e83a07ddb49f5add0d21c245dce8be6f",
+    "webrtc-patch/patches/0003-rotation-safe-capture.patch": "dd2aaf9e0a5fbbb5ede0755befb6c702d66a8ef350402332bde47b0cea27c56c",
+    "webrtc-patch/library/org/webrtc/SimpleRcEncoderQueue.java": "2fe3b1fd1b970e39acd38c3782a9e5282e524d1200907070e8520196946b6472",
+    "webrtc-patch/library/org/webrtc/SimpleRcRenderQueue.java": "b14d9c547958278daf6311072dff952e34e2d341498c402aeeb1e55308c90477",
+    "webrtc-patch/library/org/webrtc/SimpleRcVideoTuning.java": "f42bafd28ab7499f1cdd93d5d48f3341870ee543796b74b91a2c40474d821697",
+    "webrtc-patch/scripts/apply-capture-resize-patch.py": "ddeb6e9fdf2dffec62a20d8dbc6c8428636a927fd34e8917af2fadd9e89eed8c",
+    "webrtc-patch/scripts/apply-realtime-patch.py": "d73538d6b75f3a28fa15e2fccae6d9b5940f762521ac5abcf5d59715cf824125",
+    "webrtc-patch/scripts/rebuild-realtime-patch.py": "7f38421ff8c7091859798f15a609ecbe5e05d7a5df9110b723a1bea394ce58ca",
+    "webrtc-patch/scripts/test-capture-surface.py": "8748c304fccfad23a896c9e1278848df4189a053deb00a7988ad6cf3de868e45",
+    "webrtc-patch/scripts/test-video-queues.py": "da36e0cbd87404dc0057169a961e4195a3da2ef38306dfd73eed422084081427",
+    "webrtc-patch/scripts/verify-realtime-patch.py": "aecafa9f082cd7ac2183298e2ecbd73e5644c83b42aa3f391dfd5ec4aa6df91e",
+    "webrtc-patch/scripts/verify-video-build.py": "f6a4d09514b4ddf4a4813231b669333cc689bf1451b998b918c9099a910c752a"
+  },
+  "validation_boundary": "Build, patch replay, capture behavioral stubs and actual AAR helpers; no phone codec/rendering test."
+}
