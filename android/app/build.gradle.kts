@@ -12,13 +12,46 @@ android {
         applicationId = "com.simplerc.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 40
-        versionName = "0.3.37"
+        versionCode = 41
+        versionName = "0.3.38"
         buildConfigField("boolean", "FIXED_80_COMPARE", "false")
         buildConfigField("boolean", "FIXED_88_COMPARE", "false")
+        buildConfigField("String", "LAN_STUN", "\"\"")
+        buildConfigField("String", "LAN_TEST_STUN", "\"\"")
+        buildConfigField("boolean", "LAN_TEST_SOFTWARE_DECODER", "false")
+        buildConfigField("boolean", "LAN_TEST_120", "false")
+        buildConfigField("boolean", "LAN_TEST_32MBPS", "false")
+        buildConfigField("long", "REMOTE_TAP_DURATION_MS", "50L")
+        buildConfigField("long", "REMOTE_DRAG_SEGMENT_DURATION_MS", "24L")
     }
 
     buildTypes {
+        getByName("debug") {
+            if (providers.gradleProperty("simplercShortTap16").orNull == "true") {
+                buildConfigField("long", "REMOTE_TAP_DURATION_MS", "16L")
+            }
+            if (providers.gradleProperty("simplercShortDrag16").orNull == "true") {
+                buildConfigField("long", "REMOTE_DRAG_SEGMENT_DURATION_MS", "16L")
+            }
+            providers.gradleProperty("simplercLanStun").orNull?.let { url ->
+                require(Regex("stun:[0-9.]+:[0-9]{1,5}").matches(url))
+                buildConfigField("String", "LAN_STUN", "\"$url\"")
+            }
+            if (providers.gradleProperty("simplercLanTestSoftwareDecoder").orNull == "true") {
+                buildConfigField("boolean", "LAN_TEST_SOFTWARE_DECODER", "true")
+            }
+            providers.gradleProperty("simplercLanTestStun").orNull?.let { url ->
+                require(Regex("stun:[0-9.]+:[0-9]{1,5}").matches(url))
+                buildConfigField("String", "LAN_TEST_STUN", "\"$url\"")
+                val test120 = providers.gradleProperty("simplercLanTest120").orNull == "true"
+                if (test120) {
+                    buildConfigField("boolean", "LAN_TEST_120", "true")
+                }
+                if (test120 || providers.gradleProperty("simplercLanTest32Mbps").orNull == "true") {
+                    buildConfigField("boolean", "LAN_TEST_32MBPS", "true")
+                }
+            }
+        }
         create("compare80") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".compare80"

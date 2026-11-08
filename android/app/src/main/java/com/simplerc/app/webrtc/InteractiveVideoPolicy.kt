@@ -6,15 +6,27 @@ import java.util.ArrayDeque
 enum class VideoRoute { UNKNOWN, LAN, DIRECT_UDP, DIRECT_TCP, RELAY_UDP, RELAY_TCP, RELAY_UNKNOWN }
 
 /** Measured continuous-video protection plus a bounded, quiet-only text snapshot. */
-class InteractiveVideoPolicy {
+class InteractiveVideoPolicy(
+    private val maxFps: Int = AppConfig.VIDEO_MAX_FPS,
+    private val protectionFps: Int? = 24,
+    private val maxBitrateBps: Int = AppConfig.VIDEO_MAX_BITRATE_BPS ?: 16_000_000,
+    private val nativeRateControl: Boolean = false
+) {
     private var budgetBps = AppConfig.VIDEO_START_BITRATE_BPS
+    private var requestedBitrateBps: Int? = null
+    private var requestedFps: Int? = null
     private val recovery = VideoRecoveryProbe()
     private data class SafeProfile(val network:Double,val device:Double,val budget:Int)
     private var trialBase:SafeProfile?=null
     private var probationBase:SafeProfile?=null
     private var probationUntil=0L
     private var quietNow=false
-    val ceilingBps:Int get()=recovery.trial?.budget?:if(quietNow && recovery.idleConfirmed)recovery.idleBudget else budgetBps
+    val ceilingBps:Int get() {
+        // At high resolution a low application cap can starve the encoder of
+        // frames and prevent the cadence checks that would raise the cap again.
+        if (nativeRateControl) return maximum()
+        return recovery.trial?.budget ?: if (quietNow && recovery.idleConfirmed) recovery.idleBudget else budgetBps
+    }
     val scale:Double get()=recovery.trial?.scale?:maxOf(networkScale,device.scale)
     val stillDetail:Boolean get()=quietNow && (recovery.trial?.text==true || recovery.idleConfirmed)
     val refreshSerial:Long get()=recovery.refreshSerial
@@ -29,8 +41,23 @@ class InteractiveVideoPolicy {
         trialBase=null;probationBase=null
         recovery.cancel(now,"画面尺寸或路径变化，已撤回试升")
     }
-    private val cadence = VideoCadenceProtection()
-    val targetFps: Int get() = cadence.fps
+    private val cadence = VideoCadenceProtection(maxFps, protectionFps)
+    val targetFps: Int get() = if (weakLinkActive) minOf(cadence.fps, 24) else cadence.fps
+    val weakLinkScale: Double get() = if (weakLinkActive) 2.0 else 1.0
+    private val selectedTargetFps: Int get() = requestedFps ?: maxFps
+    private var weakLinkActive = false
+    private var weakLinkSamples = 0
+    private var weakLinkHealthySince: Long? = null
+
+    fun setRequestedLimits(fps: Int?, bitrateBps: Int?, now: Long) {
+        if (fps == requestedFps && bitrateBps == requestedBitrateBps) return
+        requestedFps = fps
+        requestedBitrateBps = bitrateBps
+        val protection = protectionFps?.let { if (selectedTargetFps > maxFps && maxFps >= 60) maxFps else it }
+        cadence.setTarget(selectedTargetFps, protection?.takeIf { it < selectedTargetFps })
+        budgetBps = minOf(budgetBps, maximum())
+        cancelRecovery(now)
+    }
     private val device = DetailProtection()
     private val scales = doubleArrayOf(1.0,1.25,1.5,2.0,3.0,4.0,6.0)
     private val budgets = intArrayOf(3_000_000,2_000_000,1_000_000,600_000,300_000,200_000)
@@ -47,14 +74,18 @@ class InteractiveVideoPolicy {
     private val mediaWindow = ArrayDeque<Pair<Long,Long>>()
     private val jitterWindow = ArrayDeque<Pair<Long,Long>>()
     val status:String get() = listOfNotNull(
-        "链路保护".takeIf {networkScale>1.001},
-        ("24fps设备保护（${cadence.reason?:"等待持续健康样本"}；1080p尺寸保持）").takeIf {targetFps==24},
-        "设备压力（观察中，限制画质试升）".takeIf {targetFps==30 && (device.pressureReason!=null || device.scale>1.0)}
+        "弱网保护（降低画面尺寸与帧率）".takeIf {weakLinkActive},
+        "链路保护".takeIf {networkScale>1.001 && !weakLinkActive},
+        ("${cadence.fps}fps设备保护（${cadence.reason?:"等待持续健康样本"}）").takeIf {cadence.fps<selectedTargetFps},
+        "设备压力（观察中，限制画质试升）".takeIf {targetFps==selectedTargetFps && (device.pressureReason!=null || device.scale>1.0)}
     ).joinToString(" / ").ifEmpty {"按实测余量自适应"}+" · "+recovery.reason
 
     private fun Double?.known() = this?.takeIf {it.isFinite() && it>=0}
     private fun tcp() = route in listOf(VideoRoute.DIRECT_TCP,VideoRoute.RELAY_TCP,VideoRoute.RELAY_UNKNOWN)
-    private fun maximum() = if(tcp())AppConfig.VIDEO_TCP_MAX_BITRATE_BPS else AppConfig.VIDEO_MAX_BITRATE_BPS?:16_000_000
+    private fun maximum(): Int {
+        val routeLimit = if (tcp()) AppConfig.VIDEO_TCP_MAX_BITRATE_BPS else Int.MAX_VALUE
+        return minOf(routeLimit, requestedBitrateBps ?: if (tcp()) routeLimit else maxBitrateBps)
+    }
     private fun startup() = when(route) {
         VideoRoute.DIRECT_TCP,VideoRoute.RELAY_TCP,VideoRoute.RELAY_UNKNOWN -> AppConfig.VIDEO_TCP_START_BITRATE_BPS
         VideoRoute.RELAY_UDP -> AppConfig.VIDEO_RELAY_START_BITRATE_BPS
@@ -114,12 +145,27 @@ class InteractiveVideoPolicy {
             frameCadenceReady && !pressure && !encoderQueueLimited,sourceFps,sendFps,
             decodeFps.takeUnless {pressure},renderFps.takeUnless {pressure},allowRecovery=recovery.canRecoverNormally(nowMs))
         val active=(source?:0.0)>=12 || (sent?:0.0)>=12
+        if (nativeRateControl) observeWeakLink(nowMs, active, capacity, sendDelay, loss)
         val devicePressure=device.pressureReason?:"编码队列积压".takeIf {active && encoderQueueLimited}
         val severeDevice=active && ((encodeMs.known()?:0.0)>40 || (decoderMs.known()?:0.0)>35 ||
             (renderMs.known()?:0.0)>30 || (renderSwapMs.known()?:0.0)>55) || (renderQueueMs.known()?:0.0)>80
-        cadence.observe(nowMs,devicePressure,severeDevice,
-            healthy=frameCadenceReady && device.hasMeasuredHeadroom && !pressure && !encoderQueueLimited &&
-                recovery.canRecoverNormally(nowMs) && !trialActive)
+        val encoderBacklog = active && encoderQueueLimited
+        val slowEncoder = !pressure && deficit && (cpuLimited || (encodeMs.known() ?: 0.0) > 28)
+        val slowDecoder = !pressure && sent != null && sent >= 12 && decodeFps.known()?.let { it < sent * 0.8 } == true
+        val displayBacklog = (renderQueueMs.known() ?: 0.0) > 50
+        val highFpsPressure = when {
+            encoderBacklog -> "编码队列积压"
+            slowEncoder -> "编码吞吐跟不上"
+            slowDecoder -> "解码吞吐跟不上"
+            displayBacklog -> "显示处理排队偏高"
+            else -> null
+        }
+        val cadencePressure = if (nativeRateControl) highFpsPressure else devicePressure
+        val cadenceSevere = if (nativeRateControl) displayBacklog && severeDevice else severeDevice
+        val cadenceHeadroom = nativeRateControl || device.hasMeasuredHeadroom &&
+            recovery.canRecoverNormally(nowMs) && !trialActive
+        cadence.observe(nowMs, cadencePressure, cadenceSevere,
+            healthy = frameCadenceReady && cadenceHeadroom && !pressure && !encoderQueueLimited)
         if(pressure) {
             healthySamples=0;probeSamples=0;pressureSamples++
             if((severe || pressureSamples>=2) && backoffMs?.let {nowMs-it>=if(severe)500 else 2000}!=false) {
@@ -206,6 +252,24 @@ class InteractiveVideoPolicy {
         if(!trialActive)trialBase=null
         return beforeCeiling!=ceilingBps || beforeScale!=scale || beforeDetail!=stillDetail || beforeFps!=targetFps
     }
+    private fun observeWeakLink(now: Long, active: Boolean, capacityKbps: Double?, sendDelay: Double?, loss: Double?) {
+        val lowEstimate = capacityKbps == null || capacityKbps < minOf(3000.0, maximum() * 0.75 / 1000)
+        val overloaded = active && lowEstimate && ((sendDelay ?: 0.0) > 150 || (loss ?: 0.0) > 8)
+        weakLinkSamples = if (overloaded) minOf(2, weakLinkSamples + 1) else 0
+        if (weakLinkSamples >= 2 || overloaded && (sendDelay ?: 0.0) > 500) weakLinkActive = true
+        if (!weakLinkActive) return
+        val restored = capacityKbps != null && capacityKbps >= minOf(3500.0, maximum() * 0.85 / 1000) &&
+            sendDelay != null && sendDelay < 100 && (loss ?: 0.0) <= 3
+        if (!restored) {
+            weakLinkHealthySince = null
+            return
+        }
+        val healthySince = weakLinkHealthySince ?: now.also { weakLinkHealthySince = it }
+        if (now - healthySince >= 5000) {
+            weakLinkActive = false
+            weakLinkHealthySince = null
+        }
+    }
     private fun clearEvidence() {pressureSamples=0;healthySamples=0;probeSamples=0}
     fun networkChanged() {
         cadence.clearEvidence()
@@ -213,8 +277,12 @@ class InteractiveVideoPolicy {
         recovery.networkChanged(observedMs?:0)
         mediaWindow.clear();jitterWindow.clear();clearEvidence()
         evidenceMs=null;backoffMs=null
+        weakLinkSamples=0;weakLinkHealthySince=null
     }
     fun reset() {
+        requestedFps=null;requestedBitrateBps=null
+        weakLinkActive=false
+        cadence.setTarget(maxFps, protectionFps)
         budgetBps=AppConfig.VIDEO_START_BITRATE_BPS;route=VideoRoute.UNKNOWN;networkScale=1.0;recovery.reset();quietNow=false
         observedMs=null;shapeMs=null;sampleTime=0;device.reset();cadence.reset();networkChanged()
     }

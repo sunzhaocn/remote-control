@@ -13,6 +13,8 @@ interface TouchGestureDriver {
 /** One dispatch in flight, one latest target. All methods/callbacks run on the same thread. */
 class TouchGesturePump(private val driver: TouchGestureDriver, private val longPressDurationMs:Long=550,
     private val touchSlopPx: Float = 8f,
+    private val tapDurationMs: Long = 50,
+    private val dragSegmentDurationMs: Long = 24,
     private val nowMs: () -> Long) {
     private val state = LiveTouchState()
     private val results = mutableMapOf<Long, (Boolean) -> Unit>()
@@ -222,7 +224,11 @@ class TouchGesturePump(private val driver: TouchGestureDriver, private val longP
             // our independent expiry timer; a terminal stroke still emits UP.
             return
         }
-        val duration = if (ending && hasStroke) 1L else if(sample?.longPress==true && !hasStroke)longPressDurationMs.coerceIn(50,10_000) else 24L
+        val duration = when {
+            ending && hasStroke -> 1L
+            sample?.longPress == true && !hasStroke -> longPressDurationMs.coerceIn(50, 10_000)
+            else -> dragSegmentDurationMs
+        }
         val continuing = hasStroke
         if (!continuing) {
             strokeSample = sample
@@ -260,7 +266,7 @@ class TouchGesturePump(private val driver: TouchGestureDriver, private val longP
             busy=false;hasStroke=false;state.finish(tap.id);tap.result(ok);driver.post {pump()}
         }
         val accepted=runCatching {
-            driver.dispatch(tap.x,tap.y,tap.x,tap.y,if(tap.hold)longPressDurationMs.coerceIn(50,10_000) else 50,
+            driver.dispatch(tap.x,tap.y,tap.x,tap.y,if(tap.hold)longPressDurationMs.coerceIn(50,10_000) else tapDurationMs,
                 false,false,completed={finish(true)},cancelled={finish(false)})
         }.getOrDefault(false)
         if(!accepted)finish(false)

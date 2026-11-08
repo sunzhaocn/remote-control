@@ -129,6 +129,7 @@ class QualityStats(private val sameLan:(Candidate,Candidate)->Boolean=LocalNetwo
             sendDelayMs=average(outbound,"totalPacketSendDelay","packetsSent"),
             receiveFps=rate(inbound,"framesReceived"),decodeFps=inbound?.number("framesPerSecond")?:decodeRate,
             renderFps=rate(inbound,"framesRendered"),receiveKbps=rate(inbound,"bytesReceived",8.0/1000),
+            receiveWidth=inbound?.count("frameWidth"),receiveHeight=inbound?.count("frameHeight"),
             receiveCodec=codec(inbound,all),decoder=inbound?.label("decoderImplementation"),efficientDecoder=inbound?.members?.get("powerEfficientDecoder") as? Boolean,
             receiverDropped=inbound?.count("framesDropped"),freezes=inbound?.count("freezeCount"),freezeSeconds=inbound?.number("totalFreezesDuration"),
             jitterBufferMs=average(inbound,"jitterBufferDelay","jitterBufferEmittedCount"),decodeMs=average(inbound,"totalDecodeTime","framesDecoded"),

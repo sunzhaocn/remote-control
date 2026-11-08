@@ -11,7 +11,12 @@ import com.simplerc.app.geometry.RectPx
 import com.simplerc.app.geometry.RemoteGeometry
 import com.simplerc.app.geometry.GeometryMapper
 import com.simplerc.app.model.DeviceRole
+import com.simplerc.app.model.MediaDiagnostics
 import com.simplerc.app.model.SessionState
+import com.simplerc.app.model.VideoEncodingPreference
+import com.simplerc.app.model.VideoStreamCapabilities
+import com.simplerc.app.model.VideoStreamLimits
+import com.simplerc.app.model.VideoStreamSettings
 import com.simplerc.app.state.AppStateStore
 import com.simplerc.app.webrtc.WebRtcEngine
 import org.json.JSONArray
@@ -36,9 +41,11 @@ import com.simplerc.app.config.AppConfig
 import com.simplerc.app.webrtc.QualityStats
 import com.simplerc.app.webrtc.ControlTransport
 import com.simplerc.app.webrtc.InteractiveVideoPolicy
+import com.simplerc.app.webrtc.DeviceVideoCapabilities
 import com.simplerc.app.webrtc.NativeVideoStats
 import com.simplerc.app.webrtc.FrameCadenceEvidence
 import com.simplerc.app.webrtc.ScreenCapturePipeline
+import com.simplerc.app.webrtc.ScreenCodecPreferences
 import com.simplerc.app.webrtc.VideoRoute
 import com.simplerc.app.webrtc.ScreenActivity
 import com.simplerc.app.webrtc.ScreenActivityPolicy
@@ -61,7 +68,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private var outgoingTouchId = 0L
     private var lastTouchSentMs = 0L
     private val videoMotionInput = com.simplerc.app.webrtc.VideoMotionInput()
-    private val interactivePolicy = InteractiveVideoPolicy()
+    private var interactivePolicy = InteractiveVideoPolicy()
     private val screenActivity = ScreenActivityPolicy()
     private val clearRefresh = ClearFrameRefresh()
     private val refreshBudget = com.simplerc.app.webrtc.RefreshRequestBudget()
@@ -86,6 +93,18 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private val pendingInputAcks = PendingInputAcks()
     private var capturePipeline: ScreenCapturePipeline? = null
     private var videoPolicyDirty = true
+    private data class StreamFormat(
+        val codec: String, val width: Int, val height: Int, val implementation: String?, val displayFps: Int,
+    )
+    private var streamFormat: StreamFormat? = null
+    private val failedHighFps = mutableMapOf<StreamFormat, Int>()
+    private var localStreamCaps: VideoStreamCapabilities? = null
+    private var peerStreamCaps: VideoStreamCapabilities? = null
+    private var advertisedStreamCaps: VideoStreamCapabilities? = null
+    private var sentStreamSettings: VideoStreamSettings? = null
+    private var peerStreamSettings: VideoStreamSettings? = null
+    private var appliedStreamLimits: VideoStreamLimits? = null
+    private var sentAppliedStream: VideoStreamLimits? = null
     private var lastVideoLogMs = 0L
     private var lastVideoStatusMs: Long? = null
     private var controlTransport: ControlTransport? = null
@@ -118,16 +137,16 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private var statsJob: Job? = null
     private var mediaConnected = false
     private var tunedVideoPolicy = true
+    private var sessionEncoding = VideoEncodingPreference.AUTO
     private var bandwidthPolicyApplied:Boolean?=null
     private var captureCounter:Long?=null
     private var captureCounterTime=0L
     private val coordinator get() = (app as com.simplerc.app.SimpleRcApplication).sessions
-    val transportReady: Boolean get() = mediaConnected && controlTransport?.ready==true && controlChannel?.state() == DataChannel.State.OPEN && touchChannel?.state() == DataChannel.State.OPEN && peerClock.ready
+    val transportReady: Boolean get() = mediaConnected && controlTransport?.ready==true && controlChannel?.state() == DataChannel.State.OPEN && peerClock.ready
     fun readinessDescription():String=when {
         !mediaConnected->"视频媒体路径尚未连通"
         controlTransport?.ready!=true->"独立控制路径尚未连通"
         controlChannel?.state()!=DataChannel.State.OPEN->"控制数据通道尚未打开"
-        touchChannel?.state()!=DataChannel.State.OPEN->"实时触控通道尚未打开"
         !peerClock.ready->"控制时间校准尚未完成"
         else->"正在同步会话状态"
     }
@@ -150,19 +169,28 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
 
     fun onConfirmed(id: String, payload: JSONObject, send: (String, String, JSONObject) -> Boolean) {
         if (sessionId != null && sessionId != id) close()
+        if (sessionId != id) sessionEncoding = AppStateStore.state.value.selectedVideoEncoding
         sessionId = id
         signalSend = send
         tunedVideoPolicy=payload.optString("videoPolicy","tuned")!="default"
-        SimpleRcVideoTuning.configure(tunedVideoPolicy,if(tunedVideoPolicy)AppConfig.VIDEO_MAX_FPS else AppConfig.VIDEO_COMPATIBILITY_FPS)
+        interactivePolicy = if (tunedVideoPolicy) {
+            InteractiveVideoPolicy(AppConfig.VIDEO_TUNED_FPS, AppConfig.VIDEO_TUNED_PROTECTION_FPS,
+                AppConfig.VIDEO_TUNED_MAX_BITRATE_BPS, nativeRateControl = true)
+        } else InteractiveVideoPolicy()
+        appliedStreamLimits = null
+        val frameRateCeiling = if (tunedVideoPolicy) VideoStreamSettings.frameRates.last() else interactivePolicy.targetFps
+        SimpleRcVideoTuning.configure(tunedVideoPolicy, frameRateCeiling)
         rendererFrameRateHint?.refresh()
         nativeStats.reset()
         frameCadence.reset()
         screenActivity.reset()
-        AppStateStore.update { it.copy(activeVideoPolicy=if(tunedVideoPolicy)"tuned" else "default",mediaDiagnostics=null,
+        AppStateStore.update { it.copy(activeVideoPolicy=if(tunedVideoPolicy)"tuned" else "default",activeVideoEncoding=sessionEncoding,mediaDiagnostics=null,
             connectionPath="路径未知",rttMs=null,packetLossPercent=null,controlRttMs=null,controlProbeRttMs=null,inputAckMs=null,
             controlConnectionPath="路径未知",controlCandidateTypes=null,controlCandidatePairId=null,
-            controlCandidatePairSelection=null,videoPolicyStatus="") }
-        configuredIceServers = parseIceServers(payload)
+            controlCandidatePairSelection=null,videoPolicyStatus="",videoStreamCapabilities=null,videoStreamApplied=null) }
+        val localStun = com.simplerc.app.BuildConfig.LAN_STUN.ifBlank { com.simplerc.app.BuildConfig.LAN_TEST_STUN }
+        configuredIceServers = if (localStun.isBlank()) parseIceServers(payload)
+            else listOf(PeerConnection.IceServer.builder(localStun).createIceServer())
         ensurePeer()
         ensureControlTransport()
         mediaStage("等待屏幕采集与媒体描述","CONFIRMED")
@@ -185,9 +213,11 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         videoCapturer = capturer
         val source = engine.createVideoSource().also { videoSource = it }
         val helper = checkNotNull(SurfaceTextureHelper.create("ScreenCapture", engine.eglContext)).also { textureHelper = it }
-        helper.setCaptureFrameRate(if(tunedVideoPolicy)AppConfig.VIDEO_MAX_FPS else AppConfig.VIDEO_COMPATIBILITY_FPS)
+        helper.setCaptureFrameRate(interactivePolicy.targetFps)
         val observer = CaptureActivityObserver(source.capturerObserver,
-            screenActivity, SystemClock::elapsedRealtime, System::nanoTime).also { captureActivityObserver = it }
+            screenActivity, SystemClock::elapsedRealtime, System::nanoTime,
+            drainTexture = helper.takeIf { com.simplerc.app.BuildConfig.LAN_STUN.isNotBlank() },
+        ).also { captureActivityObserver = it }
         capturer.initialize(helper, app, observer)
         val screen=currentGeometry(geometry.version+1)
         val initialPlan = contentVideoPlan(screen)
@@ -201,8 +231,17 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         val track = engine.factory.createVideoTrack("screen", source).also { videoTrack = it }
         val videoTransceiver=peer?.addTransceiver(track,RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY,listOf("simplerc")))
         videoSender=videoTransceiver?.sender
-        val preferred=tunedVideoPolicy && runCatching { videoTransceiver?.let { engine.preferScreenCodecs(it,true) } ?: false }.getOrDefault(false)
-        AppStateStore.update { it.copy(videoPolicyStatus=(when { !tunedVideoPolicy->"默认策略：1080p封顶，库默认编解码和码率";preferred->"新策略：可用硬件 H.264 优先（实际编码器见统计）";else->"新策略：H.264 优先未应用，使用兼容编码器" })+if(bandwidthPolicyApplied==false)"；初始带宽参数未应用" else "") }
+        val preferred = videoTransceiver != null && applyCodecPreference(videoTransceiver, sending = true)
+        if (sessionEncoding == VideoEncodingPreference.H264 && !preferred) {
+            failH264Negotiation()
+            return
+        }
+        val encodingStatus = when {
+            sessionEncoding == VideoEncodingPreference.H264 -> "已限制为 H.264，等待对端协商"
+            preferred -> "MediaCodec 硬件编码优先，实际编码器见统计"
+            else -> "正在使用兼容编码器，实际编码器见统计"
+        }
+        AppStateStore.update { it.copy(videoPolicyStatus=encodingStatus+if(bandwidthPolicyApplied==false)"；初始带宽参数未应用" else "") }
         audio.bindSender(peer?.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO,
             RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY))?.sender)
         geometry = screen
@@ -238,16 +277,24 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         when (type) {
             "OFFER" -> {
                 mediaStage("收到画面描述，正在生成应答","OFFER_RECEIVED")
-                setRemoteDescription(SessionDescription.Type.OFFER, payload.getString("sdp")) {
-                    if(tunedVideoPolicy)peer?.transceivers?.filter { it.mediaType==MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO }?.forEach {
-                        runCatching { engine.preferScreenCodecs(it,false) }
+                val sdp = payload.getString("sdp")
+                if (!acceptsVideoDescription(sdp)) return
+                setRemoteDescription(SessionDescription.Type.OFFER, sdp) {
+                    if (tunedVideoPolicy || sessionEncoding == VideoEncodingPreference.H264) {
+                        val video = peer?.transceivers.orEmpty().filter { it.mediaType == MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO }
+                        val applied = video.isNotEmpty() && video.all { applyCodecPreference(it, sending = false) }
+                        if (sessionEncoding == VideoEncodingPreference.H264 && !applied) {
+                            failH264Negotiation()
+                            return@setRemoteDescription
+                        }
                     }
                     createAnswer()
                 }
             }
             "ANSWER" -> {
                 mediaStage("收到远端应答，正在检查媒体路径","ANSWER_RECEIVED")
-                setRemoteDescription(SessionDescription.Type.ANSWER, payload.getString("sdp")) { applyVideoSenderPolicy() }
+                val sdp = payload.getString("sdp")
+                if (acceptsVideoDescription(sdp)) setRemoteDescription(SessionDescription.Type.ANSWER, sdp) { applyVideoSenderPolicy() }
             }
             "ICE" -> {
                 val candidate = IceCandidate(payload.optString("sdpMid"), payload.optInt("sdpMLineIndex"), payload.getString("candidate"))
@@ -273,7 +320,8 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         renderer.setEnableHardwareScaler(false)
         renderer.setMirror(false)
         rendererFrameRateHint?.close()
-        rendererFrameRateHint=if(tunedVideoPolicy)RendererFrameRateHint(renderer,AppConfig.VIDEO_MAX_FPS) else null
+        rendererFrameRateHint=if(tunedVideoPolicy)RendererFrameRateHint(renderer,
+            AppStateStore.state.value.videoStreamApplied?.fps ?: AppConfig.VIDEO_TUNED_FPS) else null
         this.renderer = renderer
     }
 
@@ -349,7 +397,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private fun sendTouch(phase: String, reliable: Boolean): Boolean {
         val touch = outgoingTouch ?: return false
         val id = sessionId ?: return false
-        val channel = if (reliable) controlChannel else touchChannel
+        val channel = if (!reliable && touchChannel?.state() == DataChannel.State.OPEN) touchChannel else controlChannel
         val terminal=phase in listOf("UP","CANCEL")
         val limit=if(terminal)65536 else if(reliable)8192 else 2048
         if (!terminal && (channel?.state() != DataChannel.State.OPEN || channel.bufferedAmount() > limit)) return false
@@ -475,8 +523,8 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         })
         peer?.setAudioRecording(false)
         if(tunedVideoPolicy && AppStateStore.state.value.role==DeviceRole.CONTROLLED) {
-            bandwidthPolicyApplied=runCatching { peer?.setBitrate(0,AppConfig.VIDEO_START_BITRATE_BPS,
-                AppConfig.VIDEO_MAX_BITRATE_BPS?.let { (it.toLong()+AppConfig.AUDIO_BITRATE_HEADROOM_BPS).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() })==true }.getOrDefault(false)
+            bandwidthPolicyApplied=runCatching { peer?.setBitrate(0,AppConfig.VIDEO_TUNED_START_BITRATE_BPS,
+                AppConfig.VIDEO_TUNED_MAX_BITRATE_BPS+AppConfig.AUDIO_BITRATE_HEADROOM_BPS)==true }.getOrDefault(false)
         }
         statsJob?.cancel()
         val peerQuality=QualityStats()
@@ -488,6 +536,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
                     val localVideo=nativeStats.read(System.nanoTime())
                     val snapshot=reading.copy(video=reading.video.copy(captureFps=sampleCaptureFps(),nativeVideo=localVideo,
                         outputSizeChanges=captureActivityObserver?.outputSizeChanges?.get(),applicationRefreshRequests=refreshBudget.admitted))
+                    updateStreamCapabilities(snapshot.video)
                     if(snapshot.routeKey!=mediaRouteKey) {
                         interactivePolicy.networkChanged()
                         frameCadence.reset()
@@ -517,6 +566,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
                             cadenceNumber("decodeFps"),cadenceNumber("renderFps"))
                         // Application PONGs run on both main threads: UI pressure while
                         // scrolling is not network congestion. Only use the ICE RTT here.
+                        val previousFps = interactivePolicy.targetFps
                         val changed=interactivePolicy.update(snapshot.rttMs, AppStateStore.state.value.controlRttMs, snapshot.lossPercent,
                             snapshot.video.availableKbps, snapshot.video.encodeMs,
                             snapshot.video.limitation == "cpu" || localVideo.encoderQueueLimited,now,
@@ -534,9 +584,11 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
                                     com.simplerc.app.webrtc.VideoRecoveryProbe.Feedback(receiverFeedbackSequence,count,w,h,swaps,now-1500+remaining) else null
                             },localDetailReady=recoveryClearEpoch>0 && SimpleRcVideoTuning.current().clearFrame.completedEpoch()>=recoveryClearEpoch,
                             localDetailSupported=localVideo.encoderName!=null && snapshot.video.efficientEncoder!=false,
-                            refreshAllowed=now>=refreshPressureUntil && refreshBudget.waitMs(now)==0L,
+                            refreshAllowed=screenActivity.isQuiet(now) && now>=refreshPressureUntil && refreshBudget.waitMs(now)==0L,
                             encodeQp=snapshot.video.encodeQp,h264Qp=snapshot.video.sendCodec?.substringBefore("/profile=")?.equals("video/H264",ignoreCase=true)==true,
                             encoderQueueLimited=localVideo.encoderQueueLimited)
+                        if (interactivePolicy.weakLinkScale == 1.0 && previousFps > AppConfig.VIDEO_TUNED_FPS && interactivePolicy.targetFps < previousFps &&
+                            appliedStreamLimits?.fps == previousFps) limitFailedHighCadence(previousFps)
                         if(changed || appliedVideoPlan!=contentVideoPlan() || videoPolicyDirty)applyVideoSenderPolicy()
                     }
                     if(coordinator.sessionAuthorized && peerClock.ready) {
@@ -613,7 +665,9 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
     private fun contentVideoPlan(screen:RemoteGeometry=geometry) = ScreenContentVideoPlan.create(
         screen.screenWidth,screen.screenHeight,screenState,interactivePolicy.scale,
         interactivePolicy.targetFps,interactivePolicy.ceilingBps,interactivePolicy.stillDetail,
-        com.simplerc.app.BuildConfig.FIXED_80_COMPARE,com.simplerc.app.BuildConfig.FIXED_88_COMPARE)
+        com.simplerc.app.BuildConfig.FIXED_80_COMPARE,com.simplerc.app.BuildConfig.FIXED_88_COMPARE,
+        if (tunedVideoPolicy) AppConfig.VIDEO_TUNED_SHORT_EDGE else AppConfig.VIDEO_SEND_SHORT_EDGE,
+        weakLinkScale = interactivePolicy.weakLinkScale)
 
     private fun updateScreenActivity() {
         if(!tunedVideoPolicy || videoCapturer==null)return
@@ -668,6 +722,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         if(!videoPolicyDirty && appliedVideoPlan?.sameEncodingAs(plan)==true) {
             appliedVideoPlan=plan
             publishVideoPolicyStatus(true,plan,"${desired.width}×${desired.height}",force=true)
+            sendAppliedStream()
             return
         }
         var outputSize=""
@@ -695,6 +750,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
             // budget or safety tier recovers. Deliver that improvement explicitly.
             if(plan.activity==ScreenActivity.STILL && previous!=null &&
                 (plan.scale!=previous.scale || plan.ceilingBps>previous.ceilingBps))clearRefreshWanted=true
+            sendAppliedStream()
         }
         publishVideoPolicyStatus(ok,plan,outputSize,force=true)
     }
@@ -755,9 +811,107 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         val bytes=value.put("sessionId",id).toString().toByteArray(Charsets.UTF_8)
         return controlChannel?.state()==DataChannel.State.OPEN && controlChannel?.send(DataChannel.Buffer(ByteBuffer.wrap(bytes),false))==true
     }
+
+    fun videoStreamSettingsChanged() = dispatchPeer(peerGeneration) { syncVideoStreamSettings() }
+
+    private fun updateStreamCapabilities(video: MediaDiagnostics) {
+        if (!tunedVideoPolicy || !coordinator.sessionAuthorized) return
+        val state = AppStateStore.state.value
+        val encoder = state.role == DeviceRole.CONTROLLED
+        val codec = DeviceVideoCapabilities.codecKey(if (encoder) video.sendCodec else video.receiveCodec)
+        // Codec limits apply to the coded frame. The renderer dimensions include display rotation.
+        val width = (if (encoder) video.sendWidth else video.receiveWidth)?.toInt() ?: 0
+        val height = (if (encoder) video.sendHeight else video.receiveHeight)?.toInt() ?: 0
+        if (codec == null || width !in 16..8192 || height !in 16..8192) return
+        val implementation = if (encoder) video.nativeVideo?.encoderName ?: video.encoder
+            else video.nativeVideo?.decoderName ?: video.decoder
+        val format = StreamFormat(codec, width, height, implementation,
+            DeviceVideoCapabilities.displayFps(app, encoder))
+        if (format != streamFormat) {
+            streamFormat = format
+            val previous = localStreamCaps
+            localStreamCaps = runCatching {
+                DeviceVideoCapabilities.read(codec, width, height, format.implementation, encoder,
+                    VideoStreamSettings.frameRates.last(), format.displayFps)
+            }.getOrNull()?.let { caps ->
+                failedHighFps[format.copy(displayFps = 0)]?.let(caps::limitMeasuredFrameRate) ?: caps
+            }
+            if (previous != localStreamCaps) sentAppliedStream = null
+            if (com.simplerc.app.BuildConfig.DEBUG) android.util.Log.d("SimpleRcStreamSettings",
+                "role=${state.role} format=$format rates=${localStreamCaps?.frameRates} maxBps=${localStreamCaps?.maxBitrateBps}")
+        }
+        syncVideoStreamSettings()
+    }
+
+    private fun limitFailedHighCadence(fps: Int) {
+        val format = streamFormat?.copy(displayFps = 0) ?: return
+        val caps = localStreamCaps ?: return
+        if (fps !in caps.frameRates) return
+        failedHighFps[format] = fps
+        localStreamCaps = caps.limitMeasuredFrameRate(fps)
+        sentAppliedStream = null
+        syncVideoStreamSettings()
+    }
+
+    private fun syncVideoStreamSettings() {
+        if (!tunedVideoPolicy || !coordinator.sessionAuthorized) return
+        val local = localStreamCaps
+        if (local != null && local != advertisedStreamCaps &&
+            sendChannel(JSONObject().put("kind", "VIDEO_CAPABILITIES").put("payload", local.toWire()))) {
+            advertisedStreamCaps = local
+        }
+        val common = local?.let { peerStreamCaps?.commonWith(it) }
+        val state = AppStateStore.state.value
+        if (state.role == DeviceRole.CONTROLLER) {
+            if (state.videoStreamCapabilities != common) {
+                sentStreamSettings = null
+                AppStateStore.update { it.copy(videoStreamCapabilities = common, videoStreamApplied = null) }
+            }
+            val settings = state.videoStreamSettings
+            if (common != null && settings != sentStreamSettings &&
+                sendChannel(JSONObject().put("kind", "VIDEO_STREAM_SETTINGS").put("payload", settings.toWire()))) {
+                sentStreamSettings = settings
+            }
+            return
+        }
+        val request = peerStreamSettings ?: return
+        val caps = common ?: return
+        val limits = request.limitsFor(caps, AppConfig.VIDEO_TUNED_FPS, AppConfig.VIDEO_TUNED_MAX_BITRATE_BPS)
+        if (limits == appliedStreamLimits) {
+            sendAppliedStream()
+            return
+        }
+        val bitrateChanged = limits.bitrateBps != (appliedStreamLimits?.bitrateBps ?: AppConfig.VIDEO_TUNED_MAX_BITRATE_BPS)
+        appliedStreamLimits = limits
+        interactivePolicy.setRequestedLimits(limits.fps, limits.bitrateBps, SystemClock.elapsedRealtime())
+        if (bitrateChanged) {
+            val maximum = limits.bitrateBps + AppConfig.AUDIO_BITRATE_HEADROOM_BPS
+            bandwidthPolicyApplied = runCatching { peer?.setBitrate(0, null, maximum) == true }.getOrDefault(false)
+        }
+        videoPolicyDirty = true
+        applyVideoSenderPolicy()
+    }
+
+    private fun sendAppliedStream() {
+        if (appliedStreamLimits == null || videoPolicyDirty || !coordinator.sessionAuthorized) return
+        val caps = localStreamCaps?.let { peerStreamCaps?.commonWith(it) } ?: return
+        val plan = appliedVideoPlan ?: return
+        val applied = VideoStreamLimits(plan.fps, plan.ceilingBps)
+        val payload = applied.toWire().put("codec", caps.codec).put("width", caps.width).put("height", caps.height)
+        if (applied != sentAppliedStream && sendChannel(
+                JSONObject().put("kind", "VIDEO_STREAM_APPLIED").put("payload", payload))) {
+            sentAppliedStream = applied
+            if (com.simplerc.app.BuildConfig.DEBUG) android.util.Log.d("SimpleRcStreamSettings", "applied sent $payload")
+        }
+    }
+
     private fun channelOpened() {
         clockJob?.cancel()
         peerClock.reset()
+        advertisedStreamCaps = null
+        sentStreamSettings = null
+        sentAppliedStream = null
+        syncVideoStreamSettings()
         if(AppStateStore.state.value.role==DeviceRole.CONTROLLED)sendGeometry()
         val token=peerGeneration
         clockJob=callbackScope.launch {
@@ -772,14 +926,25 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         channel.registerObserver(object:DataChannel.Observer {
             override fun onBufferedAmountChange(previous:Long)=Unit
             override fun onStateChange()=dispatchPeer(token) {
+                if (channel !== (if (fast) touchChannel else controlChannel)) return@dispatchPeer
                 when(channel.state()) {
                     DataChannel.State.OPEN -> {
                         if(!fast)channelOpened()
                         refreshControlAvailability()
                         coordinator.mediaTransportRestored()
                     }
-                    DataChannel.State.CLOSING,DataChannel.State.CLOSED ->
-                        stopSession("触控通道已关闭，请重新连接（CONTROL_CHANNEL_CLOSED）")
+                    DataChannel.State.CLOSING -> refreshControlAvailability()
+                    DataChannel.State.CLOSED -> {
+                        if (fast) {
+                            touchChannel = null
+                            channel.unregisterObserver()
+                            channel.dispose()
+                            AppStateStore.update { it.copy(controlStatus="快速触控通道已关闭，使用可靠控制通道") }
+                            refreshControlAvailability()
+                        } else {
+                            stopSession("可靠控制通道已关闭，请重新连接（CONTROL_CHANNEL_CLOSED）")
+                        }
+                    }
                     else -> refreshControlAvailability()
                 }
             }
@@ -809,6 +974,43 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
             };return}
             "AUDIO_POLICY"->{value.optJSONObject("payload")?.let(audio::receive);return}
             "GEOMETRY"->{value.optJSONObject("payload")?.let(::receiveGeometry);return}
+            "VIDEO_CAPABILITIES" -> {
+                if (coordinator.sessionAuthorized) {
+                    val capabilities = value.optJSONObject("payload")?.let(VideoStreamCapabilities::fromWire)
+                    if (capabilities != null && capabilities != peerStreamCaps) {
+                        peerStreamCaps = capabilities
+                        sentAppliedStream = null
+                        syncVideoStreamSettings()
+                    }
+                }
+                return
+            }
+            "VIDEO_STREAM_SETTINGS" -> {
+                if (coordinator.sessionAuthorized && AppStateStore.state.value.role == DeviceRole.CONTROLLED) {
+                    val settings = value.optJSONObject("payload")?.let(VideoStreamSettings::fromWire)
+                    if (settings != null) {
+                        peerStreamSettings = settings
+                        sentAppliedStream = null
+                        syncVideoStreamSettings()
+                    }
+                }
+                return
+            }
+            "VIDEO_STREAM_APPLIED" -> {
+                if (coordinator.sessionAuthorized && AppStateStore.state.value.role == DeviceRole.CONTROLLER) {
+                    val caps = AppStateStore.state.value.videoStreamCapabilities
+                    val payload = value.optJSONObject("payload")
+                    val applied = payload?.let(VideoStreamLimits::fromWire)
+                    if (applied != null && caps != null && payload.optString("codec") == caps.codec &&
+                        payload.optInt("width") == caps.width && payload.optInt("height") == caps.height) {
+                        AppStateStore.update { it.copy(videoStreamApplied = applied) }
+                        rendererFrameRateHint?.requestFps(applied.fps)
+                    }
+                    if (com.simplerc.app.BuildConfig.DEBUG) android.util.Log.d("SimpleRcStreamSettings",
+                        "applied received $payload commonFormat=${caps?.codec}/${caps?.width}x${caps?.height}")
+                }
+                return
+            }
             "ACK"->{if(AppStateStore.state.value.role==DeviceRole.CONTROLLER) {
                 val elapsed=pendingInputAcks.acknowledge(value.optLong("sequence"), SystemClock.elapsedRealtime())
                 if(elapsed!=null)AppStateStore.update { it.copy(controlStatus=if(value.optBoolean("ok"))"操作已执行" else "远端未执行此操作",inputAckMs=elapsed) }
@@ -926,7 +1128,20 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
             .onFailure {mediaOfferInFlight=false;stopSession("媒体描述创建失败（SDP_CREATE_FAILED）")}
     }
     private fun createAnswer() { peer?.createAnswer(sdpObserver(created={ publishLocalDescription("ANSWER",it) }),MediaConstraints()) }
+    private fun applyCodecPreference(transceiver: RtpTransceiver, sending: Boolean): Boolean =
+        runCatching { engine.applyScreenCodecPreference(transceiver, sending, sessionEncoding) }.getOrDefault(false)
+
+    private fun acceptsVideoDescription(sdp: String): Boolean {
+        if (sessionEncoding != VideoEncodingPreference.H264 || ScreenCodecPreferences.hasActiveH264Video(sdp)) return true
+        failH264Negotiation()
+        return false
+    }
+
+    private fun failH264Negotiation() =
+        coordinator.endFailedSession("H264_UNAVAILABLE", "双方未能协商 H.264 视频，请切回 MediaCodec 自动后重连")
+
     private fun publishLocalDescription(type:String,description:SessionDescription) {
+        if (!acceptsVideoDescription(description.description)) return
         peer?.setLocalDescription(sdpObserver(set={
             val id=sessionId
             if(id!=null && signalSend?.invoke(type,id,JSONObject().put("sdp",description.description))==true) {
@@ -1036,6 +1251,7 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         release { peer?.dispose() }; peer = null
         remoteTrack = null
         videoSender = null
+        sessionEncoding = VideoEncodingPreference.AUTO
         configuredIceServers = emptyList()
         remoteDescriptionReady = false
         pendingRemoteIce.clear()
@@ -1052,6 +1268,9 @@ class SessionMedia private constructor(private val app: Application) : AutoClose
         mediaRouteKey = null; controlRouteKey = null
         capturePipeline = null
         videoPolicyDirty = true; lastVideoLogMs = 0; lastVideoStatusMs = null
+        streamFormat = null; failedHighFps.clear(); localStreamCaps = null; peerStreamCaps = null; advertisedStreamCaps = null
+        sentStreamSettings = null; peerStreamSettings = null; appliedStreamLimits = null; sentAppliedStream = null
+        AppStateStore.update { it.copy(videoStreamCapabilities = null, videoStreamApplied = null) }
         bandwidthPolicyApplied = null; captureCounter = null; captureCounterTime = 0
         lastControlSequence = 0
         geometry = geometry.copy(version = 0)

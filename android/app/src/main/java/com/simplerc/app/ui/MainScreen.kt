@@ -114,7 +114,8 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
             }
         }
         if(permissions)PermissionGuideDialog({permissions=false;pendingControlled=false},openAccessibilitySettings,openAppDetails)
-        if(diagnostics)DiagnosticsDialog(state,viewModel::setVideoPolicy){diagnostics=false}
+        if(diagnostics)DiagnosticsDialog(state,viewModel::setVideoPolicy,viewModel::setVideoEncoding,
+            viewModel::setVideoStreamSettings){diagnostics=false}
         if(roleChange!=null)AlertDialog(onDismissRequest={roleChange=null},title={Text("结束当前会话？")},text={Text("切换角色将停止共享和远程操作。")},
             confirmButton={Button(onClick={val role=roleChange;roleChange=null;if(role!=null)viewModel.selectRole(role)}){Text("结束并切换")}},dismissButton={TextButton(onClick={roleChange=null}){Text("取消")}})
         if(backgroundGuide)AlertDialog(onDismissRequest={backgroundGuide=false},title={Text("后台运行")},
@@ -285,6 +286,8 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
     val currentVideoBounds by rememberUpdatedState(videoBounds)
     val density=LocalDensity.current
     val gestureConfig=LocalViewConfiguration.current
+    // A desktop pointer on the LAN can commit a drag with a shorter travel distance.
+    val dragSlop = gestureConfig.touchSlop * if (BuildConfig.LAN_STUN.isNotBlank()) 0.45f else 1f
     Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged{size=it}) {
         // EXACTLY fillMaxSize overrides WebRTC FIT measurement and crops. Size the SurfaceView
         // to the same fitted rectangle used by input, leaving black borders in this parent.
@@ -293,14 +296,14 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
             AndroidView(factory={SurfaceViewRenderer(it).also{renderer->media.attachRenderer(renderer);renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)}},modifier=Modifier.fillMaxSize(),onRelease=media::detachRenderer)
         }
         // A separate Compose overlay owns input; SurfaceView touch handling cannot consume it.
-        Box(Modifier.fillMaxSize().zIndex(1f).pointerInput(state.controlEnabled,size,viewport.inputSpace,state.activeSessionId,inputGeneration,gestureConfig.touchSlop,gestureConfig.longPressTimeoutMillis) {
+        Box(Modifier.fillMaxSize().zIndex(1f).pointerInput(state.controlEnabled,size,viewport.inputSpace,state.activeSessionId,inputGeneration,dragSlop,gestureConfig.longPressTimeoutMillis) {
             awaitEachGesture {
                 val down=awaitFirstDown(requireUnconsumed=true)
                 val bounds=currentVideoBounds
                 val token=if(state.controlEnabled && currentEvent.changes.none {it.id!=down.id && it.pressed})
                     touchGate.begin(down.position.x,down.position.y,bounds,currentMenuBounds) else null
                 if(token!=null) {
-                    val intent=LocalTouchIntent(down.position.x,down.position.y,down.uptimeMillis,gestureConfig.touchSlop,gestureConfig.longPressTimeoutMillis)
+                    val intent=LocalTouchIntent(down.position.x,down.position.y,down.uptimeMillis,dragSlop,gestureConfig.longPressTimeoutMillis)
                     var position=down.position
                     var finished=false
                     down.consume()
@@ -329,7 +332,7 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
                                 LocalTouchIntent.Action.START_DRAG->{
                                     // An outward swipe starting at an edge has no remote path.
                                     // Do not turn its clamped, stationary point into a DOWN.
-                                    if((position-down.position).getDistance()<gestureConfig.touchSlop ||
+                                    if((position-down.position).getDistance()<dragSlop ||
                                         !media.beginTouch(down.position.x,down.position.y,bounds,position.x,position.y,eventUptimeMs=change.uptimeMillis))break
                                 }
                                 else->if(intent.mode!=LocalTouchIntent.Mode.PENDING)media.moveTouch(position.x,position.y,bounds,change.uptimeMillis)
@@ -357,20 +360,38 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
     }
 }
 
-@Composable private fun DiagnosticsDialog(state:AppState,policy:(Boolean)->Unit,dismiss:()->Unit) {
-    AlertDialog(onDismissRequest=dismiss,title={Text("诊断与策略")},text={
+@Composable private fun DiagnosticsDialog(state:AppState,policy:(Boolean)->Unit,
+    setEncoding:(VideoEncodingPreference)->Unit,setStream:(VideoStreamSettings)->Unit,dismiss:()->Unit) {
+    AlertDialog(onDismissRequest=dismiss,title={
+        Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+            Text("诊断与策略")
+            state.videoStreamApplied?.let { applied ->
+                val limit = String.format(java.util.Locale.ROOT, "%.1f", applied.bitrateBps / 1_000_000.0)
+                Text("当前生效 ${applied.fps} fps · 码率上限 $limit Mbps", style=MaterialTheme.typography.bodySmall)
+            }
+        }
+    },text={
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             if(state.role==DeviceRole.CONTROLLER)Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 Text(if(state.selectedVideoPolicy=="tuned")"新策略" else "默认策略",Modifier.weight(1f))
                 Switch(state.selectedVideoPolicy=="tuned",onCheckedChange=policy)
             }
-            Text("由控制端选择，下次连接生效。新策略最高30fps，优先流畅与低延迟，按实际链路和设备负载调节画质。操作不会固定切低清；视频和滑动共用自适应预算，持续吃紧才降档，稳定有余量后逐级提高。恢复证据不足时小步试升，失败回退；静止文字有有限清晰补帧，诊断会显示等待或回退原因。接收码率是实际视频流量，不是宽带测速。",style=MaterialTheme.typography.bodySmall)
+            Text("由控制端选择，下次连接生效。新策略短边最高 ${AppConfig.VIDEO_TUNED_SHORT_EDGE} 像素，保留原屏比例，目标 ${AppConfig.VIDEO_TUNED_FPS} fps。设备持续过载时降低帧率，网络拥塞时调整码率。静止画面会按需发送。",style=MaterialTheme.typography.bodySmall)
+            if (state.role == DeviceRole.CONTROLLER) VideoStreamControls(state, setStream)
+            Text("视频编码",fontWeight=FontWeight.SemiBold)
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                VideoEncodingPreference.entries.forEach { encoding ->
+                    FilterChip(selected=state.selectedVideoEncoding==encoding,onClick={setEncoding(encoding)},label={Text(encoding.label)})
+                }
+            }
+            Text("默认优先使用 Android MediaCodec 硬件编码。仅 H.264 需要双方支持。更改在下次连接时生效。",style=MaterialTheme.typography.bodySmall)
             Text(state.screenAwakeStatus,style=MaterialTheme.typography.bodySmall)
             if(state.lastBackgroundScreenAwake.isNotBlank())Text("最近后台状态：${state.lastBackgroundScreenAwake}",style=MaterialTheme.typography.bodySmall)
             if(state.lastScreenOff.isNotBlank())Text("上次灭屏记录：${state.lastScreenOff}",style=MaterialTheme.typography.bodySmall)
             if(state.activeSessionId==null)Text("连接后提供实际统计。请分别观察静止画面和持续滑动，静止低帧率不代表卡顿。")
             else {
                 Text("当前会话："+if(state.activeVideoPolicy=="default")"默认策略" else "新策略")
+                state.activeVideoEncoding?.let { Text("本机会话编码偏好：${it.label}",style=MaterialTheme.typography.bodySmall) }
                 Text(state.qualityText(),style=MaterialTheme.typography.bodySmall)
                 Text(state.controlQualityText(),style=MaterialTheme.typography.bodySmall)
                 Text(state.controlRouteDetailsText(),style=MaterialTheme.typography.bodySmall)
@@ -381,4 +402,48 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
             }
         }
     },confirmButton={TextButton(onClick=dismiss){Text("关闭")}})
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun VideoStreamControls(state: AppState, onChange: (VideoStreamSettings) -> Unit) {
+    val selected = state.videoStreamSettings
+    val enabled = (state.activeVideoPolicy ?: state.selectedVideoPolicy) == "tuned"
+    val caps = state.videoStreamCapabilities
+    Text("画质", fontWeight = FontWeight.SemiBold)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 2) {
+        VideoQuality.entries.forEach { quality ->
+            FilterChip(selected = quality == selected.quality, enabled = enabled,
+                onClick = { onChange(selected.copy(quality = quality)) },
+                label = { Text(quality.label) })
+        }
+    }
+    if (selected.quality == VideoQuality.CUSTOM) {
+        var draft by remember(selected.customMbps) { mutableFloatStateOf(selected.customMbps.toFloat()) }
+        Text("${draft.toInt()} Mbps")
+        Slider(value = draft, onValueChange = { draft = it }, valueRange = 1f..500f,
+            enabled = enabled, onValueChangeFinished = { onChange(selected.copy(customMbps = draft.toInt())) })
+    }
+    val requested = selected.quality.bitrateBps(selected.customMbps)
+    if (caps != null && requested != null) {
+        val limit = minOf(requested, caps.maxBitrateBps) / 1_000_000.0
+        Text("两端协商后的画质上限 ${String.format(java.util.Locale.ROOT, "%.1f", limit)} Mbps",
+            style = MaterialTheme.typography.bodySmall)
+    }
+    Text("档位设置的是码率上限。网络拥塞时会自动降低实际码率。", style = MaterialTheme.typography.bodySmall)
+    Text("帧率", fontWeight = FontWeight.SemiBold)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 3) {
+        VideoStreamSettings.frameRates.forEach { fps ->
+            val available = enabled && caps?.frameRates?.contains(fps) == true
+            FilterChip(selected = fps == (selected.fps ?: AppConfig.VIDEO_TUNED_FPS),
+                enabled = available, onClick = { onChange(selected.copy(fps = fps)) },
+                label = { Text("$fps fps") })
+        }
+    }
+    Text(when {
+        !enabled -> "默认兼容策略沿用原有自动设置。"
+        caps == null -> "等连接并确认对端、分辨率和实际编解码器后开放可用帧率。"
+        caps.runtimeLimited -> "本次会话在当前分辨率下出现持续设备压力，已限制高帧率档位。"
+        !caps.deviceConfirmed -> "实际编解码性能有未确认项。灰色档位暂不可选。"
+        else -> "灰色档位超出当前分辨率、设备模式或本版本支持范围。"
+    }, style = MaterialTheme.typography.bodySmall)
 }

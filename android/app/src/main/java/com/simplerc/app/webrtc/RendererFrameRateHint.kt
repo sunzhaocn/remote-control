@@ -9,7 +9,7 @@ import android.view.SurfaceHolder
 import org.webrtc.SurfaceViewRenderer
 
 /** A source-rate hint, not a forced display-mode switch; drawing is paced on the EGL looper. */
-class RendererFrameRateHint(private val renderer: SurfaceViewRenderer, private val fps: Int) : SurfaceHolder.Callback {
+class RendererFrameRateHint(private val renderer: SurfaceViewRenderer, private var fps: Int) : SurfaceHolder.Callback {
     private val displays=renderer.context.getSystemService(DisplayManager::class.java)
     private val listener=object:DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId:Int)=Unit
@@ -23,6 +23,11 @@ class RendererFrameRateHint(private val renderer: SurfaceViewRenderer, private v
             renderer.display?.refreshRate?.toDouble()?.takeIf {it.isFinite() && it in 20.0..360.0} ?: 0.0
     }
     fun refresh() = updateRefreshRate()
+    fun requestFps(value: Int) {
+        if (fps == value) return
+        fps = value
+        apply(value.toFloat())
+    }
     init {
         renderer.holder.addCallback(this)
         displays.registerDisplayListener(listener,Handler(Looper.getMainLooper()))

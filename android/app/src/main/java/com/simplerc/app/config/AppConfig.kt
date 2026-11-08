@@ -1,5 +1,7 @@
 package com.simplerc.app.config
 
+import com.simplerc.app.BuildConfig
+
 object AppConfig {
     const val SIGNALING_BASE_URL = "https://49.233.43.167:9443/simplerc"
     const val SIGNALING_WS_URL = "wss://49.233.43.167:9443/simplerc/v1/ws"
@@ -23,8 +25,13 @@ object AppConfig {
     const val VIDEO_STATS_MILLIS = 500L
     // Phone 1080p: cap the short edge and preserve the complete screen aspect.
     const val VIDEO_SEND_SHORT_EDGE = 1080
-    // Stable cadence; content changes alter detail, never toggle 30/60fps.
+    // Compatibility mode retains its previous size and frame rate.
     const val VIDEO_MAX_FPS = 30
+    const val VIDEO_TUNED_SHORT_EDGE = 1440
+    val VIDEO_TUNED_FPS = if (BuildConfig.LAN_TEST_120) 120 else 60
+    val VIDEO_TUNED_PROTECTION_FPS = if (BuildConfig.LAN_TEST_32MBPS) null else 45
+    val VIDEO_TUNED_MAX_BITRATE_BPS = if (BuildConfig.LAN_TEST_32MBPS) 32_000_000 else 16_000_000
+    val VIDEO_TUNED_START_BITRATE_BPS = if (BuildConfig.LAN_TEST_32MBPS) VIDEO_TUNED_MAX_BITRATE_BPS else 4_000_000
     const val VIDEO_START_FPS = 30
     const val VIDEO_COMPATIBILITY_FPS = 30
     const val VIDEO_LOW_BANDWIDTH_FPS = 30
@@ -37,6 +44,5 @@ object AppConfig {
     val VIDEO_MAX_BITRATE_BPS: Int? = 16_000_000
     const val AUDIO_BITRATE_HEADROOM_BPS = 128_000
     const val CONTROL_BITRATE_HEADROOM_BPS = 192_000
-    const val VIDEO_PREFER_HARDWARE_H264 = true
     const val VIDEO_MAINTAIN_FRAMERATE = true
 }

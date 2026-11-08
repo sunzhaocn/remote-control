@@ -23,6 +23,8 @@ data class MediaDiagnostics(
     val decodeFps: Double? = null,
     val renderFps: Double? = null,
     val receiveKbps: Double? = null,
+    val receiveWidth: Long? = null,
+    val receiveHeight: Long? = null,
     val receiveCodec: String? = null,
     val decoder: String? = null,
     val efficientDecoder: Boolean? = null,
@@ -63,7 +65,7 @@ data class MediaDiagnostics(
             append("限制累计：${if(limitationSeconds.isEmpty())"未知" else limitationSeconds.entries.joinToString(" / "){"${it.key} ${number(it.value)}s"}}\n")
         } else {
             append("接收 ${number(receiveFps)}fps · 解码 ${number(decodeFps)}fps · 渲染 ${number(renderFps)}fps\n")
-            append("视频接收 ${number(receiveKbps)}kbps · 解码 ${receiveCodec ?: "未知"} / ${decoder ?: "未知"}\n")
+            append("视频接收 ${number(receiveKbps)}kbps · ${receiveWidth ?: "?"}×${receiveHeight ?: "?"} · 解码 ${receiveCodec ?: "未知"} / ${decoder ?: "未知"}\n")
             append("高效解码 ${efficient(efficientDecoder)} · 丢帧 ${receiverDropped ?: "未知"}\n")
             append("冻结 ${freezes ?: "未知"}次 / ${number(freezeSeconds)}s · 缓冲 ${number(jitterBufferMs)}ms · 解码 ${number(decodeMs)}ms\n")
             append("解码关键帧 ${decodedKeyFrames?:"未知"}\n")

@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.simplerc.app.BuildConfig
 import com.simplerc.app.control.*
 
 /** Android bridge: continued strokes preserve the pointer instead of replaying complete swipes. */
@@ -40,7 +41,12 @@ class LiveTouchExecutor(service: AccessibilityService) {
             continuing: Boolean, willContinue: Boolean, completed: () -> Unit, cancelled: () -> Unit): Boolean =
             dispatcher.dispatch(GestureSegment(fromX, fromY, toX, toY, durationMs, continuing, willContinue), completed, cancelled)
     }, longPressDurationMs=android.view.ViewConfiguration.getLongPressTimeout()+50L,
-        touchSlopPx=android.view.ViewConfiguration.get(service).scaledTouchSlop.toFloat(),
+        // The LAN controller has already classified the drag. Keep a second guard
+        // against stationary or heavily clamped coordinates without repeating its wait.
+        touchSlopPx=android.view.ViewConfiguration.get(service).scaledTouchSlop *
+            if (BuildConfig.LAN_STUN.isNotBlank()) 0.30f else 1f,
+        tapDurationMs=BuildConfig.REMOTE_TAP_DURATION_MS,
+        dragSegmentDurationMs=BuildConfig.REMOTE_DRAG_SEGMENT_DURATION_MS,
         nowMs=SystemClock::elapsedRealtime)
     fun submit(sample: TouchSample, result: (Boolean) -> Unit) = !closed && pump.submit(sample, result)
     fun cancel() { if (!closed) pump.cancel() }

@@ -7,7 +7,9 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.projection.MediaProjection
+import android.os.Build
 import androidx.core.content.ContextCompat
+import com.simplerc.app.model.VideoEncodingPreference
 import org.webrtc.*
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
@@ -22,7 +24,11 @@ class WebRtcEngine(context: Context) : AutoCloseable {
     val factory: PeerConnectionFactory
     private val hardwareCodecs=HardwareVideoEncoderFactory(egl.eglBaseContext,true,true).supportedCodecs.map { it.name.uppercase() }.toSet()
     init {
-        PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context.applicationContext).createInitializationOptions())
+        val options = PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
+        if (com.simplerc.app.BuildConfig.LAN_STUN.isNotBlank() || com.simplerc.app.BuildConfig.LAN_TEST_STUN.isNotBlank()) {
+            options.setFieldTrials("WebRTC-ForcePlayoutDelay/min_ms:0,max_ms:80/")
+        }
+        PeerConnectionFactory.initialize(options.createInitializationOptions())
         audioDeviceModule = JavaAudioDeviceModule.builder(context.applicationContext)
             .setUseHardwareAcousticEchoCanceler(false)
             .setUseHardwareNoiseSuppressor(false)
@@ -54,22 +60,22 @@ class WebRtcEngine(context: Context) : AutoCloseable {
         factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(audioDeviceModule)
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
-            .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext)).createPeerConnectionFactory()
+            .setVideoDecoderFactory(
+                if (com.simplerc.app.BuildConfig.LAN_TEST_SOFTWARE_DECODER && Build.HARDWARE == "ranchu")
+                    PlatformSoftwareVideoDecoderFactory(egl.eglBaseContext)
+                else DefaultVideoDecoderFactory(egl.eglBaseContext)
+            ).createPeerConnectionFactory()
     }
     fun createVideoSource(): VideoSource = factory.createVideoSource(true)
-    fun preferScreenCodecs(transceiver:RtpTransceiver,sending:Boolean):Boolean {
-        if(!com.simplerc.app.config.AppConfig.VIDEO_PREFER_HARDWARE_H264)return false
-        if(sending && "H264" !in hardwareCodecs)return false
-        val capabilities=if(sending)factory.getRtpSenderCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO)
-            else factory.getRtpReceiverCapabilities(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO)
-        if(capabilities.codecs.none { it.name.equals("H264",true) })return false
-        transceiver.setCodecPreferences(capabilities.codecs.sortedBy {
-            when {
-                it.name.equals("H264",true) && it.parameters["profile-level-id"].orEmpty().startsWith("42",true)->0
-                it.name.equals("H264",true)->1
-                else->2
-            }
-        })
+    fun applyScreenCodecPreference(transceiver: RtpTransceiver, sending: Boolean, preference: VideoEncodingPreference): Boolean {
+        val mediaType = MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO
+        val capabilities = if (sending) factory.getRtpSenderCapabilities(mediaType) else factory.getRtpReceiverCapabilities(mediaType)
+        val codecs = if (com.simplerc.app.BuildConfig.LAN_TEST_STUN.isNotBlank())
+            capabilities.codecs.filterNot { it.name.equals("H265", true) }
+        else capabilities.codecs
+        val selected = ScreenCodecPreferences.select(codecs, preference, if (sending) hardwareCodecs else setOf("H264"))
+        if (selected.isEmpty()) return false
+        transceiver.setCodecPreferences(selected)
         return true
     }
     fun setMediaProjection(value: MediaProjection?) = projection.set(value)

@@ -1,8 +1,8 @@
 package com.simplerc.app.webrtc
 
 /** Relieve sustained device work while keeping every frame's dimensions unchanged. */
-class VideoCadenceProtection {
-    var fps: Int = 30
+class VideoCadenceProtection(private var targetFps: Int = 30, private var protectionFps: Int? = 24) {
+    var fps: Int = targetFps
         private set
     var reason: String? = null
         private set
@@ -12,7 +12,18 @@ class VideoCadenceProtection {
     private var healthySamples = 0
     private var healthySinceMs: Long? = null
 
+    fun setTarget(target: Int, protection: Int?) {
+        if (target == targetFps && protection == protectionFps) return
+        val reduced = fps < targetFps
+        targetFps = target
+        protectionFps = protection
+        fps = if (reduced && protection != null) minOf(target, maxOf(fps, protection)) else target
+        if (fps == target) reason = null
+        clearEvidence()
+    }
+
     fun observe(nowMs: Long, pressure: String?, severe: Boolean, healthy: Boolean): Boolean {
+        val reducedFps = protectionFps ?: return false
         if (nowMs < 0) return false
         val elapsed = previousMs?.let { nowMs - it }
         if (elapsed != null && elapsed < 750) return false
@@ -22,10 +33,10 @@ class VideoCadenceProtection {
             healthySamples = 0
             healthySinceMs = null
             pressureSamples++
-            if (fps == 24) reason = pressure
+            if (fps == reducedFps) reason = pressure
             val resident = changedMs?.let { nowMs - it >= 3000 } != false
-            if (fps == 30 && (severe || pressureSamples >= 2 && resident)) {
-                fps = 24
+            if (fps == targetFps && (severe || pressureSamples >= 2 && resident)) {
+                fps = reducedFps
                 reason = pressure
                 changedMs = nowMs
                 clearEvidence()
@@ -39,10 +50,10 @@ class VideoCadenceProtection {
             } else {
                 if (healthySinceMs == null) healthySinceMs = nowMs
                 healthySamples++
-                if (fps == 24 && healthySamples >= 8 &&
+                if (fps == reducedFps && healthySamples >= 8 &&
                     nowMs - checkNotNull(healthySinceMs) >= 8000 &&
                     changedMs?.let { nowMs - it >= 8000 } != false) {
-                    fps = 30
+                    fps = targetFps
                     reason = null
                     changedMs = nowMs
                     clearEvidence()
@@ -60,7 +71,7 @@ class VideoCadenceProtection {
     }
 
     fun reset() {
-        fps = 30
+        fps = targetFps
         reason = null
         previousMs = null
         changedMs = null

@@ -462,7 +462,7 @@ class SessionCoordinator(private val app: Application) {
         app.stopService(android.content.Intent(app,com.simplerc.app.service.ControllerService::class.java))
         if(!enabled) { resumeAction=null;closeTransport() }
         AppStateStore.update { it.copy(sessionState=if(enabled) SessionState.STANDBY else SessionState.IDLE,
-            statusDetail=if(enabled) "被控待机中" else "未连接",activeSessionId=null,incomingSessionId=null,controlEnabled=false,remoteVideoAvailable=false,credentialPublishing=false,remoteRotation=null,remoteCaptureWidth=0,remoteCaptureHeight=0,remoteFrameWidth=0,remoteFrameHeight=0,rttMs=null,packetLossPercent=null,remoteAudioAllowed=false,mediaDiagnostics=null,videoPolicyStatus="",activeVideoPolicy=null,controlRttMs=null,controlProbeRttMs=null,inputAckMs=null,connectionPath="路径未知",controlConnectionPath="路径未知",
+            statusDetail=if(enabled) "被控待机中" else "未连接",activeSessionId=null,incomingSessionId=null,controlEnabled=false,remoteVideoAvailable=false,credentialPublishing=false,remoteRotation=null,remoteCaptureWidth=0,remoteCaptureHeight=0,remoteFrameWidth=0,remoteFrameHeight=0,rttMs=null,packetLossPercent=null,remoteAudioAllowed=false,mediaDiagnostics=null,videoPolicyStatus="",activeVideoPolicy=null,activeVideoEncoding=null,controlRttMs=null,controlProbeRttMs=null,inputAckMs=null,connectionPath="路径未知",controlConnectionPath="路径未知",
             controlCandidateTypes=null,controlCandidatePairId=null,controlCandidatePairSelection=null) }
         ending=false
         if(resumeStandby) {

@@ -15,6 +15,15 @@ enum class AvailabilityState {
 
 enum class SessionState { IDLE, REGISTERING, STANDBY, WAITING_CONFIRMATION, CONNECTING, CONNECTED, RECONNECTING, STOPPED, ERROR }
 
+enum class VideoEncodingPreference(val key: String, val label: String) {
+    AUTO("auto", "MediaCodec 自动"),
+    H264("h264", "仅 H.264");
+
+    companion object {
+        fun fromKey(key: String?) = entries.firstOrNull { it.key == key } ?: AUTO
+    }
+}
+
 data class AppState(
     val role: DeviceRole = DeviceRole.CONTROLLER,
     val availability: AvailabilityState = AvailabilityState.DISABLED,
@@ -70,5 +79,10 @@ data class AppState(
     val inputAckMs: Long? = null,
     val selectedVideoPolicy: String = "tuned",
     val activeVideoPolicy: String? = null,
+    val selectedVideoEncoding: VideoEncodingPreference = VideoEncodingPreference.AUTO,
+    val activeVideoEncoding: VideoEncodingPreference? = null,
+    val videoStreamSettings: VideoStreamSettings = VideoStreamSettings(),
+    val videoStreamCapabilities: VideoStreamCapabilities? = null,
+    val videoStreamApplied: VideoStreamLimits? = null,
 )
 

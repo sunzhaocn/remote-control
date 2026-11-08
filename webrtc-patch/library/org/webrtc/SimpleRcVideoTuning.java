@@ -8,7 +8,7 @@ public final class SimpleRcVideoTuning {
   private SimpleRcVideoTuning() {}
   public static Session current() { return current; }
   public static void configure(boolean interactive, int maxFps) {
-    current = new Session(interactive, Math.max(15, Math.min(60, maxFps)));
+    current = new Session(interactive, Math.max(15, Math.min(165, maxFps)));
   }
   public static Snapshot snapshot() { return new Snapshot(current); }
   public static final class Session {
