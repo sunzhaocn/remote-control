@@ -1,14 +1,14 @@
-# SimpleRC
+# SimpleRC · Android 手机互控
 
-SimpleRC 是一个 Android 手机互控项目。两台手机安装同一个应用，一台分享屏幕，另一台实时看画面并操作。它可以用来远程协助家人设置手机、操作自己的备用机，或者演示和排查 Android 应用问题。
+两台 Android 手机安装同一个应用，一台分享屏幕，另一台实时观看并操作。可以用来远程协助家人设置手机、操作自己的备用机，或演示和排查 Android 应用问题。
 
 [下载 Android APK](https://github.com/sunzhaocn/remote-control/releases/latest)
 
 ## 能做什么
 
 - **远程看屏幕和操作手机**。支持点击、长按、滑动、返回、主页和最近任务。手机旋转时会同步画面方向和触控坐标。
-- **局域网和跨网络连接**。两端通过信令建立会话，尝试 P2P 直连。直连失败时可通过 TURN 中继，应用内可分别查看媒体和控制链路的状态。
-- **调整画质和帧率**。支持自动、清晰、高清、原画和自定义码率上限。默认由 MediaCodec 自动选择，也可切换为仅 H.264。新策略以 60 fps 为目标，高帧率档按双方设备能力开放，拥塞或设备过载时会主动降档。
+- **局域网和跨网络连接**。支持局域网直连，跨网络时尝试 P2P 直连，直连失败时可通过 TURN 中继。应用内可分别查看媒体和控制链路的状态。
+- **调整画质和帧率**。支持画质预设和自定义码率上限。默认优先使用 MediaCodec 硬件编码，也可切换为仅 H.264。高帧率档根据双方设备能力开放，网络拥塞或设备过载时可自动降档。
 - **共享手机内部声音**。被控端可单独开关，实际能否采集取决于 Android 和音源应用的权限策略。
 
 ## 怎么用
@@ -19,14 +19,14 @@ SimpleRC 是一个 Android 手机互控项目。两台手机安装同一个应�
 
 ## 技术架构
 
-| 模块 | 实现 |
+| 技术 | 实现的功能 |
 | --- | --- |
-| Android 客户端 | Kotlin 和 Jetpack Compose。用 MediaProjection 采集屏幕，使用 MediaCodec 编解码，通过无障碍服务执行已授权的触控和系统导航。内部声音通过 AudioPlaybackCapture 采集。 |
-| 实时传输 | WebRTC 传输视频和音频，独立的 DataChannel 链路传输触控与控制消息。ICE 选择可用路径，STUN 辅助建立直连，coturn 提供 TURN 中继。 |
-| 服务端 | Go 提供设备配对、会话管理和 WebSocket 信令，使用 PostgreSQL 和 Redis。仓库包含 Docker Compose 部署配置。 |
+| Kotlin、Jetpack Compose | 构建同一个 Android 应用，提供控制端和被控端界面。 |
+| MediaProjection、MediaCodec、AudioPlaybackCapture | 采集屏幕，编解码实时视频，按用户设置采集系统允许共享的内部声音。 |
+| Android 无障碍服务 | 执行用户授权的远程手势和系统导航。 |
+| WebRTC、DataChannel | 传输实时音视频，通过独立控制链路回传触控和会话消息。 |
+| ICE、STUN、coturn | 协商可用的网络路径，支持直连和 TURN 中继。 |
+| Go、WebSocket、PostgreSQL、Redis | 提供设备配对、会话管理和信令服务。 |
+| Docker Compose | 提供信令服务、数据库和 TURN 中继的自部署配置。 |
 
 客户端位于 [android/](android/)，信令服务位于 [server/](server/)，部署配置位于 [deploy/](deploy/)，Android WebRTC 补丁位于 [webrtc-patch/](webrtc-patch/)。
-
-## 性能实测
-
-单台 Android 真机固定在 60 Hz，以 1272×2800、H.264 和 32 Mbps 码率上限走局域网直连。独立 Windows 接收器在 120 秒内平均组帧 60.04 fps。实际帧率和延迟取决于设备、网络和接收端，双真机和更多机型仍待验证。
