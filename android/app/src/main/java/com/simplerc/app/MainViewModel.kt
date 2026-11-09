@@ -30,7 +30,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val stream = VideoStreamSettings(
             VideoQuality.fromName(videoSettings.getString("quality", null)),
             videoSettings.getInt("custom_mbps", 20).coerceIn(1, 500),
-            videoSettings.getInt("fps", 0).takeIf { it in VideoStreamSettings.frameRates },
+            VideoStreamSettings.normalizeFps(
+                videoSettings.getInt("fps", 0).takeIf { it in VideoStreamSettings.frameRates }),
         )
         AppStateStore.update { it.copy(selectedVideoPolicy=if(saved=="default")"default" else "tuned",
             selectedVideoEncoding=encoding, videoStreamSettings=stream) }
@@ -49,7 +50,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setVideoStreamSettings(settings: VideoStreamSettings) {
         val updated = settings.copy(customMbps = settings.customMbps.coerceIn(1, 500),
-            fps = settings.fps?.takeIf { it in VideoStreamSettings.frameRates })
+            fps = VideoStreamSettings.normalizeFps(settings.fps))
         videoSettings.edit().putString("quality", updated.quality.name)
             .putInt("custom_mbps", updated.customMbps).putInt("fps", updated.fps ?: 0).apply()
         AppStateStore.update { it.copy(videoStreamSettings = updated) }

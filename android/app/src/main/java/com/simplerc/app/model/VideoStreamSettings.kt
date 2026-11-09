@@ -25,24 +25,34 @@ data class VideoStreamSettings(
     val fps: Int? = null,
 ) {
     fun limitsFor(capabilities: VideoStreamCapabilities, autoFps: Int, autoBitrateBps: Int): VideoStreamLimits {
-        val requested = fps ?: autoFps
+        // Requests above 60 are legacy values: accept the wire number, execute as 60.
+        val requested = minOf(fps ?: autoFps, MAX_REQUEST_FPS)
         val frameLimit = capabilities.frameRates.filter { it <= requested }.maxOrNull() ?: minOf(30, requested)
         val bitrateLimit = minOf(quality.bitrateBps(customMbps) ?: autoBitrateBps, capabilities.maxBitrateBps)
         return VideoStreamLimits(frameLimit, bitrateLimit)
     }
 
     fun toWire() = JSONObject().put("quality", quality.name).put("customMbps", customMbps)
-        .put("fps", fps ?: 0)
+        .put("fps", normalizeFps(fps) ?: 0)
 
     companion object {
+        const val MAX_REQUEST_FPS = 60
         val frameRates = listOf(30, 60, 90, 120, 144, 165)
+
+        /** Keep old legal numbers parseable; execute any high legacy request as 60. */
+        fun normalizeFps(value: Int?): Int? = when {
+            value == null || value == 0 -> null
+            value == 30 || value == 60 -> value
+            value in frameRates -> MAX_REQUEST_FPS
+            else -> null
+        }
 
         fun fromWire(value: JSONObject): VideoStreamSettings? {
             val quality = VideoQuality.entries.firstOrNull { it.name == value.optString("quality") } ?: return null
             val bitrate = value.optInt("customMbps", -1)
             val fps = value.optInt("fps", -1)
             if (bitrate !in 1..500 || fps != 0 && fps !in frameRates) return null
-            return VideoStreamSettings(quality, bitrate, fps.takeIf { it != 0 })
+            return VideoStreamSettings(quality, bitrate, normalizeFps(fps.takeIf { it != 0 }))
         }
     }
 }

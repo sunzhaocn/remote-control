@@ -409,6 +409,8 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
     val selected = state.videoStreamSettings
     val enabled = (state.activeVideoPolicy ?: state.selectedVideoPolicy) == "tuned"
     val caps = state.videoStreamCapabilities
+    val requestedFps = VideoStreamSettings.normalizeFps(selected.fps)
+        ?: minOf(AppConfig.VIDEO_TUNED_FPS, VideoStreamSettings.MAX_REQUEST_FPS)
     Text("画质", fontWeight = FontWeight.SemiBold)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 2) {
         VideoQuality.entries.forEach { quality ->
@@ -433,17 +435,17 @@ fun SimpleRcApp(viewModel:MainViewModel,openAccessibilitySettings:()->Unit,openA
     Text("帧率", fontWeight = FontWeight.SemiBold)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 3) {
         VideoStreamSettings.frameRates.forEach { fps ->
-            val available = enabled && caps?.frameRates?.contains(fps) == true
-            FilterChip(selected = fps == (selected.fps ?: AppConfig.VIDEO_TUNED_FPS),
-                enabled = available, onClick = { onChange(selected.copy(fps = fps)) },
+            // 30/60 are explicit request tiers even before capabilities are known.
+            // They must stay clickable when the hardware can only sustain 30.
+            // 90+ are not enabled in this build and keep the existing performance gate.
+            val requestable = fps == 30 || fps == 60
+            FilterChip(selected = fps == requestedFps,
+                enabled = requestable,
+                onClick = { onChange(selected.copy(fps = fps)) },
                 label = { Text("$fps fps") })
         }
     }
-    Text(when {
-        !enabled -> "默认兼容策略沿用原有自动设置。"
-        caps == null -> "等连接并确认对端、分辨率和实际编解码器后开放可用帧率。"
-        caps.runtimeLimited -> "本次会话在当前分辨率下出现持续设备压力，已限制高帧率档位。"
-        !caps.deviceConfirmed -> "实际编解码性能有未确认项。灰色档位暂不可选。"
-        else -> "灰色档位超出当前分辨率、设备模式或本版本支持范围。"
-    }, style = MaterialTheme.typography.bodySmall)
+    Text("目标 $requestedFps fps", style = MaterialTheme.typography.bodySmall)
+    Text("实际帧率受设备和网络影响，更高档位暂未开放。", style = MaterialTheme.typography.bodySmall)
+    if (!enabled) Text("兼容策略下请求会保存，实际沿用原自动策略。", style = MaterialTheme.typography.bodySmall)
 }
